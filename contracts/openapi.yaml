@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: RideMatch API
-  version: 0.3.1
+  version: 0.3.2
   description: |
     Contract for the RideMatch monolith (FastAPI). Source of truth for backend, frontend and tests.
     See CONTRACT.md for conventions, state machines, business rules, error codes and the WebSocket protocol.
@@ -976,7 +976,7 @@ components:
           oneOf:
             - { $ref: "#/components/schemas/Gender" }
             - { type: "null" }
-        preferences: { $ref: "#/components/schemas/UserPreferences" }
+        preferences: { $ref: "#/components/schemas/UserPreferencesPatch" }
         vehicle:
           description: Optional here; required before offering a ride
           oneOf:
@@ -995,7 +995,9 @@ components:
         websocket: { type: boolean, default: true }
     UserPreferences:
       type: object
-      description: All keys optional; server fills defaults on read
+      description: |
+        Read shape: the server fills every default, so all keys are present in a response.
+        Writes use UserPreferencesPatch instead.
       properties:
         default_mode:
           oneOf:
@@ -1007,6 +1009,34 @@ components:
         notifications: { $ref: "#/components/schemas/NotificationPrefs" }
         language: { type: string, default: en, examples: [en, he] }
         theme: { type: string, enum: [light, dark, system], default: system }
+    NotificationPrefsPatch:
+      type: object
+      description: |
+        Write shape for NotificationPrefs. No defaults, so an absent key means "leave it alone";
+        the server merges what is sent into the stored sub-object.
+      properties:
+        email: { type: boolean }
+        push: { type: boolean }
+        websocket: { type: boolean }
+    UserPreferencesPatch:
+      type: object
+      description: |
+        Write shape for UserPreferences, used by PATCH /users/me and POST /users/me/onboarding.
+        Shallow merge, with the `notifications` sub-object merged too (CONTRACT.md §4 Users).
+        Carries no defaults — that is what separates it from UserPreferences, which is the read
+        shape and always comes back complete. An absent key is left alone; `default_mode: null`
+        genuinely clears it.
+      properties:
+        default_mode:
+          oneOf:
+            - { $ref: "#/components/schemas/Mode" }
+            - { type: "null" }
+          description: null → client shows Role Selection
+        smoking: { type: boolean, description: "true = OK with smoking" }
+        pets: { type: boolean, description: "true = OK with pets" }
+        notifications: { $ref: "#/components/schemas/NotificationPrefsPatch" }
+        language: { type: string, examples: [en, he] }
+        theme: { type: string, enum: [light, dark, system] }
     Vehicle:
       type: object
       required: [make, model, color, plate]
@@ -1090,7 +1120,7 @@ components:
           oneOf:
             - { $ref: "#/components/schemas/Gender" }
             - { type: "null" }
-        preferences: { $ref: "#/components/schemas/UserPreferences" }
+        preferences: { $ref: "#/components/schemas/UserPreferencesPatch" }
         vehicle:
           description: Full replace. null removes it (409 VEHICLE_REQUIRED if the user has upcoming/full rides).
           oneOf:

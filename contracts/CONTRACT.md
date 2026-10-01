@@ -107,7 +107,7 @@ pending ──ride started / stale──▶ rejected
 - Password and email changes happen in Clerk. Webhook `user.updated` updates `users.email`. Webhook `user.deleted` sets `is_active=false` and closes the user's sockets. Their rides and ratings stay for history.
 - Admin deactivate → `is_active=false` + ban the user through Clerk's Backend API (`CLERK_SECRET_KEY`), which ends their sessions. Reactivate → unban. If the Clerk call fails, the DB change still applies (it's enforced anyway) and the failure is logged.
 - `last_login_at` is updated on an authenticated request when it's older than 1 hour. It feeds `active_users` in analytics.
-- `preferences` read → the server fills defaults for missing keys. `PATCH` → shallow merge (the `notifications` sub-object is merged too).
+- `preferences` read → the server fills defaults for missing keys (`UserPreferences`). Writes use `UserPreferencesPatch`, which carries no defaults: `PATCH` and onboarding shallow-merge what is sent (the `notifications` sub-object is merged too), an absent key is left alone, and `default_mode: null` clears it. Booleans must be real JSON booleans — `"yes"` is a 422.
 
 ## 5. Error codes
 
