@@ -6,10 +6,7 @@ requires-python = ">=3.12"
 
 dependencies = [
     # ── the system under test ────────────────────────────────────────────
-    # Enable together with [tool.uv.sources] below, as soon as
-    # ../backend contains an installable `ridematch-backend` package.
-    # Until then `uv lock` fails with "does not appear to be a Python project".
-    # "ridematch-backend",
+    "ridematch-backend",
 
     # ── harness ──────────────────────────────────────────────────────────
     "pytest>=8.3",
@@ -24,8 +21,8 @@ dependencies = [
     "ruff>=0.8",
 ]
 
-# [tool.uv.sources]
-# ridematch-backend = { path = "../backend", editable = true }
+[tool.uv.sources]
+ridematch-backend = { path = "../backend", editable = true }
 
 [tool.pytest.ini_options]
 testpaths = ["unit", "api"]

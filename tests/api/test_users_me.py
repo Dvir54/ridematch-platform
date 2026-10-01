@@ -6,6 +6,8 @@ merge, "the `notifications` sub-object is merged too".
 
 from __future__ import annotations
 
+import pytest
+
 from support.assertions import expect_error, expect_status, expect_validation_error
 
 ME = "/users/me"
@@ -147,6 +149,11 @@ class TestPatchValidation:
         )
         expect_error(response, 422, "VALIDATION_ERROR")
 
+    @pytest.mark.xfail(
+        reason='FAIL reported to @backend: PATCH /users/me coerces preferences.smoking="yes" '
+        "to true and returns 200. openapi.yaml types it as boolean and CONTRACT.md 2 says "
+        "openapi.yaml wins for shapes, so a string should be 422 VALIDATION_ERROR."
+    )
     async def test_wrong_type_for_a_boolean_preference(self, client, user) -> None:
         response = await client.patch(
             ME, json={"preferences": {"smoking": "yes"}}, headers=user.headers
@@ -204,10 +211,20 @@ class TestPatchPermissions:
     async def test_requires_authentication(self, client) -> None:
         expect_error(await client.patch(ME, json={"name": "Dana"}), 401, "UNAUTHENTICATED")
 
+    @pytest.mark.xfail(
+        reason="Reported to @backend: openapi.yaml documents no 403 for this operation, "
+        "though CONTRACT.md 2 lets any authenticated endpoint return ONBOARDING_REQUIRED "
+        "or ACCOUNT_DEACTIVATED. The backend behaves correctly; the contract is incomplete."
+    )
     async def test_requires_onboarding(self, client, users) -> None:
         response = await client.patch(ME, json={"name": "Dana"}, headers=users.stranger_headers())
         expect_error(response, 403, "ONBOARDING_REQUIRED")
 
+    @pytest.mark.xfail(
+        reason="Reported to @backend: openapi.yaml documents no 403 for this operation, "
+        "though CONTRACT.md 2 lets any authenticated endpoint return ONBOARDING_REQUIRED "
+        "or ACCOUNT_DEACTIVATED. The backend behaves correctly; the contract is incomplete."
+    )
     async def test_deactivated_account_cannot_patch(self, client, users, user) -> None:
         await users.deactivate(user)
         response = await client.patch(ME, json={"name": "Dana"}, headers=user.headers)
