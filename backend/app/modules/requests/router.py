@@ -4,24 +4,36 @@
 literal paths win.
 """
 
+from collections.abc import Sequence
 from typing import Annotated
 
 from fastapi import APIRouter, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import AppSettings, CurrentUser
 from app.clock import Now
 from app.db import DbSession
 from app.modules.requests import service as requests_service
-from app.modules.requests.models import REQUEST_STATUSES
+from app.modules.requests.models import REQUEST_STATUSES, RideRequest
 from app.modules.requests.schemas import (
-    RequestStatus,
     RideRequestCreate,
     RideRequestOut,
     request_out,
 )
+from app.modules.rides import service as rides_service
+from app.modules.users.models import User
 from app.params import PageParams, StatusFilter, parse_status_filter
+from app.schemas import RequestStatus
 
 router = APIRouter(tags=["requests"])
+
+
+async def _out(
+    db: AsyncSession, requests: Sequence[RideRequest], user: User
+) -> list[RideRequestOut]:
+    """One viewer for the whole response, so the embedded rides cost one extra query."""
+    viewer = await rides_service.viewer_for(db, [request.ride for request in requests], user)
+    return [request_out(request, viewer) for request in requests]
 
 
 @router.post(
@@ -41,7 +53,7 @@ async def create_request(
     request = await requests_service.create_request(
         db, settings, ride_id=ride_id, passenger=user, data=payload, now=now
     )
-    return request_out(request, viewer_id=user.id)
+    return (await _out(db, [request], user))[0]
 
 
 @router.get(
@@ -58,7 +70,7 @@ async def list_ride_requests(
     requests = await requests_service.list_ride_requests(
         db, ride_id=ride_id, driver=user, status=status
     )
-    return [request_out(request, viewer_id=user.id) for request in requests]
+    return await _out(db, requests, user)
 
 
 @router.get(
@@ -77,7 +89,7 @@ async def list_my_requests(
         limit=page.limit,
         offset=page.offset,
     )
-    return [request_out(request, viewer_id=user.id) for request in requests]
+    return await _out(db, requests, user)
 
 
 @router.get(
@@ -91,14 +103,14 @@ async def list_incoming_requests(
     status: Annotated[RequestStatus, Query()] = "pending",
 ) -> list[RideRequestOut]:
     requests = await requests_service.list_incoming_requests(db, driver_id=user.id, status=status)
-    return [request_out(request, viewer_id=user.id) for request in requests]
+    return await _out(db, requests, user)
 
 
 @router.get("/requests/{request_id}", response_model=RideRequestOut, summary="A single request")
 async def get_request(request_id: int, user: CurrentUser, db: DbSession) -> RideRequestOut:
     request = await requests_service.get_request_or_404(db, request_id)
     requests_service.require_viewer(request, user)
-    return request_out(request, viewer_id=user.id)
+    return (await _out(db, [request], user))[0]
 
 
 @router.post(
@@ -110,7 +122,7 @@ async def approve_request(
     request = await requests_service.approve_request(
         db, settings, request_id=request_id, driver=user, now=now
     )
-    return request_out(request, viewer_id=user.id)
+    return (await _out(db, [request], user))[0]
 
 
 @router.post(
@@ -122,7 +134,7 @@ async def reject_request(
     request = await requests_service.reject_request(
         db, settings, request_id=request_id, driver=user, now=now
     )
-    return request_out(request, viewer_id=user.id)
+    return (await _out(db, [request], user))[0]
 
 
 @router.post(
@@ -136,4 +148,4 @@ async def cancel_request(
     request = await requests_service.cancel_request(
         db, settings, request_id=request_id, passenger=user, now=now
     )
-    return request_out(request, viewer_id=user.id)
+    return (await _out(db, [request], user))[0]

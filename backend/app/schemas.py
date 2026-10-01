@@ -7,7 +7,7 @@
 import re
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Annotated, TypeVar
+from typing import Annotated, Literal, TypeVar
 
 from pydantic import (
     AfterValidator,
@@ -77,6 +77,10 @@ MoneyIn = Annotated[
 NotNull = Annotated[T | None, BeforeValidator(_reject_null)]
 Latitude = Annotated[float, Field(ge=-90, le=90)]
 Longitude = Annotated[float, Field(ge=-180, le=180)]
+#: openapi.yaml #/components/schemas/RideStatus and RequestStatus — shared, so they live here
+#: rather than in whichever module happens to need them first.
+RideStatus = Literal["upcoming", "full", "in_progress", "completed", "cancelled"]
+RequestStatus = Literal["pending", "approved", "rejected", "cancelled"]
 
 
 class ApiModel(BaseModel):
