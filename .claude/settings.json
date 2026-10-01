@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch --show-current)",
+      "Bash(git rev-parse:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git merge main)",
+      "Bash(git merge feat/backend)",
+      "Bash(uv:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(npx openapi-typescript:*)",
+      "Bash(docker compose ps)",
+      "Bash(docker compose logs:*)"
+    ],
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git rebase:*)",
+      "Bash(git checkout main:*)",
+      "Bash(git switch main:*)",
+      "Read(./.env)",
+      "Read(**/.env)"
+    ]
+  }
+}

@@ -1,0 +1,1322 @@
+openapi: 3.1.0
+info:
+  title: RideMatch API
+  version: 0.3.0
+  description: |
+    Contract for the RideMatch monolith (FastAPI). Source of truth for backend, frontend and tests.
+    See CONTRACT.md for conventions, state machines, business rules, error codes and the WebSocket protocol.
+    Authentication is handled by Clerk (sign-up, sign-in, password, email verification, social login).
+    The backend never sees passwords; it verifies the Clerk session token on every request.
+    Owned by @backend. Any change: bump `info.version`, commit, then message @frontend and @tests.
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Local dev
+  - url: https://api.example.com/api/v1
+    description: Production (placeholder domain)
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: users
+  - name: rides
+  - name: requests
+  - name: search
+  - name: ratings
+  - name: notifications
+  - name: admin
+  - name: webhooks
+  - name: system
+
+paths:
+  # ───────────────────────────── system ─────────────────────────────
+  /health:
+    get:
+      tags: [system]
+      operationId: health
+      security: []
+      summary: Liveness check (DB + Redis reachable)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, db, redis]
+                properties:
+                  status: { type: string, enum: [ok, degraded] }
+                  db: { type: boolean }
+                  redis: { type: boolean }
+
+  # ───────────────────────────── webhooks ─────────────────────────────
+  /webhooks/clerk:
+    post:
+      tags: [webhooks]
+      operationId: clerkWebhook
+      security: []
+      summary: |
+        Called by Clerk (via Svix), not by the frontend. Verified with the `svix-id`, `svix-timestamp`
+        and `svix-signature` headers against CLERK_WEBHOOK_SIGNING_SECRET, using the raw request body.
+        Handles `user.updated` (sync email) and `user.deleted` (deactivate). Other event types → 204, ignored.
+        Idempotent on `svix-id`. Deliveries may repeat or arrive out of order.
+      parameters:
+        - { name: svix-id, in: header, required: true, schema: { type: string } }
+        - { name: svix-timestamp, in: header, required: true, schema: { type: string } }
+        - { name: svix-signature, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, data]
+              properties:
+                type: { type: string, examples: [user.updated] }
+                data: { type: object, additionalProperties: true }
+      responses:
+        "204": { description: Processed (or ignored) }
+        "400":
+          description: Bad or missing signature (INVALID_WEBHOOK_SIGNATURE)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  # ───────────────────────────── users ─────────────────────────────
+  /users/me/onboarding:
+    post:
+      tags: [users]
+      operationId: completeOnboarding
+      summary: |
+        First call after a new Clerk sign-up. Creates the RideMatch user row, linked to the token's `sub`
+        (Clerk user id), with the email from the token's `email` claim. Until this succeeds, every other
+        authenticated endpoint returns 403 ONBOARDING_REQUIRED. If the email equals ADMIN_EMAIL and no admin exists yet,
+        the user is created with is_admin=true. Sends the `welcome` notification + email.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OnboardingRequest" }
+      responses:
+        "201":
+          description: Profile created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserMe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }        # ACCOUNT_DEACTIVATED
+        "409": { $ref: "#/components/responses/Conflict" }         # ALREADY_ONBOARDED, EMAIL_ALREADY_EXISTS
+        "422": { $ref: "#/components/responses/ValidationError" }  # UNDERAGE, TERMS_NOT_ACCEPTED
+
+  /users/me:
+    get:
+      tags: [users]
+      operationId: getMe
+      summary: The frontend calls this right after Clerk sign-in. 403 ONBOARDING_REQUIRED → show the onboarding form.
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserMe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }  # ONBOARDING_REQUIRED, ACCOUNT_DEACTIVATED
+    patch:
+      tags: [users]
+      operationId: updateMe
+      summary: Update profile and/or preferences (preferences are shallow-merged; notifications sub-object merged too)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserUpdate" }
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserMe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /users/me/stats:
+    get:
+      tags: [users]
+      operationId: getMyStats
+      summary: Counters for driver Home and passenger Profile screens
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserStats" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /users/{user_id}:
+    get:
+      tags: [users]
+      operationId: getUserPublic
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      responses:
+        "200":
+          description: Public profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserPublic" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /users/{user_id}/ratings:
+    get:
+      tags: [ratings]
+      operationId: listUserRatings
+      parameters:
+        - { $ref: "#/components/parameters/UserId" }
+        - name: role_rated
+          in: query
+          schema: { $ref: "#/components/schemas/RoleRated" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Offset" }
+      responses:
+        "200":
+          description: Ratings received by the user, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Rating" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ───────────────────────────── rides ─────────────────────────────
+  /rides:
+    post:
+      tags: [rides]
+      operationId: createRide
+      summary: |
+        Driver offers a ride. status=upcoming, available_seats=capacity.
+        The caller must have a vehicle on their profile (409 VEHICLE_REQUIRED).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RideCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ride" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }         # VEHICLE_REQUIRED
+        "422": { $ref: "#/components/responses/ValidationError" }  # incl. DEPARTURE_IN_PAST
+
+  /rides/mine:
+    get:
+      tags: [rides]
+      operationId: listMyRides
+      summary: Rides the caller offers as driver, ordered by departure_time ascending
+      parameters:
+        - name: status
+          in: query
+          description: Comma-separated filter, e.g. `upcoming,full`
+          schema: { type: string }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Offset" }
+      responses:
+        "200":
+          description: Rides
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Ride" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /rides/{ride_id}:
+    get:
+      tags: [rides]
+      operationId: getRide
+      parameters: [{ $ref: "#/components/parameters/RideId" }]
+      responses:
+        "200":
+          description: Ride
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ride" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [rides]
+      operationId: updateRide
+      summary: |
+        Driver only, status must be `upcoming` or `full`. If the ride has approved passengers,
+        location/departure_time changes → 409 RIDE_HAS_APPROVED_PASSENGERS, and capacity may not drop
+        below approved seats → 409 CAPACITY_BELOW_APPROVED. Changing capacity recomputes available_seats
+        and status (full ↔ upcoming).
+      parameters: [{ $ref: "#/components/parameters/RideId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RideUpdate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ride" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /rides/{ride_id}/cancel:
+    post:
+      tags: [rides]
+      operationId: cancelRide
+      summary: |
+        Driver only, from `upcoming` or `full`. Sets status=cancelled, all pending/approved requests →
+        cancelled, notifies approved passengers (ride_cancelled) and pending requesters.
+      parameters: [{ $ref: "#/components/parameters/RideId" }]
+      responses:
+        "200":
+          description: Cancelled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ride" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }  # INVALID_STATE_TRANSITION
+
+  /rides/{ride_id}/start:
+    post:
+      tags: [rides]
+      operationId: startRide
+      summary: Driver only, from `upcoming`/`full`, on departure day. Pending requests → rejected.
+      parameters: [{ $ref: "#/components/parameters/RideId" }]
+      responses:
+        "200":
+          description: Started (status=in_progress)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ride" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }  # INVALID_STATE_TRANSITION, TOO_EARLY_TO_START
+
+  /rides/{ride_id}/complete:
+    post:
+      tags: [rides]
+      operationId: completeRide
+      summary: Driver only, from `in_progress`. Opens rating for all participants.
+      parameters: [{ $ref: "#/components/parameters/RideId" }]
+      responses:
+        "200":
+          description: Completed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ride" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /rides/{ride_id}/requests:
+    post:
+      tags: [requests]
+      operationId: createRequest
+      summary: |
+        Passenger requests seats. Rejected with 409 if: caller is the driver (CANNOT_REQUEST_OWN_RIDE),
+        ride not `upcoming` (RIDE_NOT_OPEN), not enough seats (NOT_ENOUGH_SEATS), caller already has
+        a pending/approved request on this ride (REQUEST_ALREADY_EXISTS), or the driver already rejected
+        the caller on this ride (PREVIOUSLY_REJECTED). Re-requesting after the caller's own cancel is allowed.
+        Notifies driver (request_created).
+      parameters: [{ $ref: "#/components/parameters/RideId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RideRequestCreate" }
+      responses:
+        "201":
+          description: Created (status=pending)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RideRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    get:
+      tags: [requests]
+      operationId: listRideRequests
+      summary: Driver of the ride only. All requests on the ride, newest first.
+      parameters:
+        - { $ref: "#/components/parameters/RideId" }
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/RequestStatus" }
+      responses:
+        "200":
+          description: Requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RideRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ───────────────────────────── requests ─────────────────────────────
+  /requests/mine:
+    get:
+      tags: [requests]
+      operationId: listMyRequests
+      summary: Passenger's trips (My Trips), newest first
+      parameters:
+        - name: status
+          in: query
+          description: Comma-separated filter, e.g. `pending,approved`
+          schema: { type: string }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Offset" }
+      responses:
+        "200":
+          description: Requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RideRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /requests/incoming:
+    get:
+      tags: [requests]
+      operationId: listIncomingRequests
+      summary: Requests on all of the caller's rides (driver Requests tab + Home badge). Default status=pending.
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/RequestStatus"
+            default: pending
+      responses:
+        "200":
+          description: Requests, grouped client-side by ride_id
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RideRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /requests/{request_id}:
+    get:
+      tags: [requests]
+      operationId: getRequest
+      summary: Visible to the passenger who made it and the ride's driver
+      parameters: [{ $ref: "#/components/parameters/RequestId" }]
+      responses:
+        "200":
+          description: Request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RideRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /requests/{request_id}/approve:
+    post:
+      tags: [requests]
+      operationId: approveRequest
+      summary: |
+        Driver only, request must be `pending`, ride `upcoming`. Decrements available_seats by
+        seats_requested under a row lock (409 NOT_ENOUGH_SEATS otherwise); ride → `full` at 0.
+        Notifies passenger (request_approved + email).
+      parameters: [{ $ref: "#/components/parameters/RequestId" }]
+      responses:
+        "200":
+          description: Approved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RideRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /requests/{request_id}/reject:
+    post:
+      tags: [requests]
+      operationId: rejectRequest
+      summary: Driver only, request must be `pending`. Notifies passenger (request_rejected + email).
+      parameters: [{ $ref: "#/components/parameters/RequestId" }]
+      responses:
+        "200":
+          description: Rejected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RideRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /requests/{request_id}/cancel:
+    post:
+      tags: [requests]
+      operationId: cancelRequest
+      summary: |
+        Passenger only. `pending` → cancelled any time before the ride starts.
+        `approved` → cancelled only until departure_time − 1h (409 TOO_LATE_TO_CANCEL after that);
+        the seats go back to the ride (full → upcoming if it was full). Notifies driver (request_cancelled).
+      parameters: [{ $ref: "#/components/parameters/RequestId" }]
+      responses:
+        "200":
+          description: Cancelled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RideRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  # ───────────────────────────── search ─────────────────────────────
+  /search:
+    get:
+      tags: [search]
+      operationId: searchRides
+      summary: |
+        Scores `upcoming` rides with enough seats near the passenger's route/time. Excludes the
+        caller's own rides and rides the caller already has a pending/approved request on.
+        Returns only match_score ≥ 40. Passenger preferences come from the caller's saved preferences.
+      parameters:
+        - { name: start_lat, in: query, required: true, schema: { $ref: "#/components/schemas/Latitude" } }
+        - { name: start_lng, in: query, required: true, schema: { $ref: "#/components/schemas/Longitude" } }
+        - { name: end_lat, in: query, required: true, schema: { $ref: "#/components/schemas/Latitude" } }
+        - { name: end_lng, in: query, required: true, schema: { $ref: "#/components/schemas/Longitude" } }
+        - name: time
+          in: query
+          required: true
+          description: Desired departure time (ISO 8601 with offset)
+          schema: { type: string, format: date-time }
+        - name: budget
+          in: query
+          description: Max acceptable price per seat
+          schema: { $ref: "#/components/schemas/Money" }
+        - name: seats
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 8, default: 1 }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [best_match, earliest, cheapest], default: best_match }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Offset" }
+      responses:
+        "200":
+          description: Matches
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RideMatch" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  # ───────────────────────────── ratings ─────────────────────────────
+  /ratings:
+    post:
+      tags: [ratings]
+      operationId: createRating
+      summary: |
+        Ride must be `completed`. Caller and to_user must both be participants (driver or approved
+        passenger) and not the same person; driver rates passengers, passengers rate the driver
+        (passenger↔passenger not allowed → 403 NOT_A_PARTICIPANT). role_rated is derived server-side.
+        Updates the ratee's cached rating. One per direction per ride (409 ALREADY_RATED).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RatingCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Rating" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /ratings/pending:
+    get:
+      tags: [ratings]
+      operationId: listPendingRatings
+      summary: Ratings the caller still owes on completed rides (drives the post-ride prompt)
+      responses:
+        "200":
+          description: Pending ratings
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PendingRating" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ───────────────────────────── notifications ─────────────────────────────
+  /notifications:
+    get:
+      tags: [notifications]
+      operationId: listNotifications
+      parameters:
+        - name: unread_only
+          in: query
+          schema: { type: boolean, default: false }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Offset" }
+      responses:
+        "200":
+          description: Newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Notification" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    delete:
+      tags: [notifications]
+      operationId: clearNotifications
+      summary: Clear all (deletes the caller's notifications)
+      responses:
+        "204": { description: Cleared }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /notifications/unread-count:
+    get:
+      tags: [notifications]
+      operationId: getUnreadCount
+      responses:
+        "200":
+          description: Badge count
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count]
+                properties:
+                  count: { type: integer, minimum: 0 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /notifications/{notification_id}/read:
+    post:
+      tags: [notifications]
+      operationId: markNotificationRead
+      parameters:
+        - name: notification_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Marked read
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Notification" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /notifications/read-all:
+    post:
+      tags: [notifications]
+      operationId: markAllNotificationsRead
+      responses:
+        "204": { description: All marked read }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ───────────────────────────── admin ─────────────────────────────
+  /admin/users:
+    get:
+      tags: [admin]
+      operationId: adminListUsers
+      summary: Admin only. Total count in `X-Total-Count` header.
+      parameters:
+        - name: q
+          in: query
+          description: Substring match on name or email
+          schema: { type: string }
+        - name: is_active
+          in: query
+          schema: { type: boolean }
+        - name: is_admin
+          in: query
+          schema: { type: boolean }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Offset" }
+      responses:
+        "200":
+          description: Users
+          headers:
+            X-Total-Count: { $ref: "#/components/headers/XTotalCount" }
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/UserMe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/users/{user_id}:
+    get:
+      tags: [admin]
+      operationId: adminGetUser
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      responses:
+        "200":
+          description: User with ride/request/rating history
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUserDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/users/{user_id}/deactivate:
+    post:
+      tags: [admin]
+      operationId: adminDeactivateUser
+      summary: Sets is_active=false and bans the user in Clerk (Backend API), which ends their sessions. Admin cannot deactivate self (409 CANNOT_DEACTIVATE_SELF).
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      responses:
+        "200":
+          description: Deactivated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserMe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/users/{user_id}/reactivate:
+    post:
+      tags: [admin]
+      operationId: adminReactivateUser
+      summary: Sets is_active=true and unbans the user in Clerk.
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      responses:
+        "200":
+          description: Reactivated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserMe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/rides:
+    get:
+      tags: [admin]
+      operationId: adminListRides
+      summary: Admin only. Total count in `X-Total-Count` header.
+      parameters:
+        - name: status
+          in: query
+          description: Comma-separated
+          schema: { type: string }
+        - name: driver_id
+          in: query
+          schema: { type: integer }
+        - name: from
+          in: query
+          description: departure_time ≥
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          description: departure_time <
+          schema: { type: string, format: date-time }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Offset" }
+      responses:
+        "200":
+          description: Rides
+          headers:
+            X-Total-Count: { $ref: "#/components/headers/XTotalCount" }
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Ride" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/rides/{ride_id}/force-cancel:
+    post:
+      tags: [admin]
+      operationId: adminForceCancelRide
+      summary: Cancel any non-terminal ride (incl. in_progress). Same side effects as driver cancel, plus notifies the driver.
+      parameters: [{ $ref: "#/components/parameters/RideId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        "200":
+          description: Cancelled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ride" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/analytics:
+    get:
+      tags: [admin]
+      operationId: adminAnalytics
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: true
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnalyticsSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+# ════════════════════════════════════════════════════════════════════
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Clerk session token (short-lived, RS256). The frontend gets a fresh one with Clerk's `getToken()`
+        before each request. The backend verifies signature (Clerk JWKS), exp/nbf, iss and azp. See CONTRACT.md §2.
+
+  parameters:
+    UserId:
+      name: user_id
+      in: path
+      required: true
+      schema: { type: integer }
+    RideId:
+      name: ride_id
+      in: path
+      required: true
+      schema: { type: integer }
+    RequestId:
+      name: request_id
+      in: path
+      required: true
+      schema: { type: integer }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    Offset:
+      name: offset
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+
+  headers:
+    XTotalCount:
+      description: Total number of matching rows, ignoring limit/offset
+      schema: { type: integer }
+
+  responses:
+    Unauthorized:
+      description: Missing, invalid or expired Clerk session token (UNAUTHENTICATED)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Authenticated but not allowed (FORBIDDEN, ONBOARDING_REQUIRED, ACCOUNT_DEACTIVATED, NOT_A_PARTICIPANT)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Resource does not exist (or is not visible to the caller)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: Business-rule / state conflict — see `code`
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ValidationError:
+      description: Request body/params failed validation
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    # ── primitives ──
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Stable machine-readable code (see CONTRACT.md §5)
+          examples: [RIDE_NOT_OPEN]
+        message:
+          type: string
+          description: Human-readable, not for parsing
+        details:
+          description: For VALIDATION_ERROR — list of field errors
+          type: array
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field: { type: string, examples: [body.departure_time] }
+              message: { type: string }
+    Latitude:
+      type: number
+      minimum: -90
+      maximum: 90
+    Longitude:
+      type: number
+      minimum: -180
+      maximum: 180
+    Money:
+      type: string
+      pattern: '^\d{1,8}(\.\d{1,2})?$'
+      description: Decimal as string, e.g. "25.50" (never a float)
+      examples: ["25.50"]
+    Gender:
+      type: string
+      enum: [male, female, other, prefer_not_to_say]
+    Mode:
+      type: string
+      enum: [driver, passenger]
+    RoleRated:
+      type: string
+      enum: [driver, passenger]
+    RideStatus:
+      type: string
+      enum: [upcoming, full, in_progress, completed, cancelled]
+    RequestStatus:
+      type: string
+      enum: [pending, approved, rejected, cancelled]
+    NotificationType:
+      type: string
+      enum:
+        - welcome
+        - request_created
+        - request_approved
+        - request_rejected
+        - request_cancelled
+        - ride_reminder
+        - ride_cancelled
+        - ride_started
+        - ride_completed
+        - rating_received
+
+    # ── onboarding ──
+    OnboardingRequest:
+      type: object
+      description: Email and password are NOT here, since they live in Clerk. Frontend may prefill name from Clerk.
+      required: [name, date_of_birth, accepted_terms]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        phone:
+          type: [string, "null"]
+          maxLength: 20
+          pattern: '^\+?[0-9 \-]{7,20}$'
+        date_of_birth:
+          type: string
+          format: date
+          description: Must be 18+ today (422 UNDERAGE)
+        gender:
+          oneOf:
+            - { $ref: "#/components/schemas/Gender" }
+            - { type: "null" }
+        preferences: { $ref: "#/components/schemas/UserPreferences" }
+        vehicle:
+          description: Optional here; required before offering a ride
+          oneOf:
+            - { $ref: "#/components/schemas/Vehicle" }
+            - { type: "null" }
+        accepted_terms:
+          type: boolean
+          const: true
+
+    # ── users ──
+    NotificationPrefs:
+      type: object
+      properties:
+        email: { type: boolean, default: true }
+        push: { type: boolean, default: true }
+        websocket: { type: boolean, default: true }
+    UserPreferences:
+      type: object
+      description: All keys optional; server fills defaults on read
+      properties:
+        default_mode:
+          oneOf:
+            - { $ref: "#/components/schemas/Mode" }
+            - { type: "null" }
+          description: null → client shows Role Selection
+        smoking: { type: boolean, default: false, description: "true = OK with smoking" }
+        pets: { type: boolean, default: false, description: "true = OK with pets" }
+        notifications: { $ref: "#/components/schemas/NotificationPrefs" }
+        language: { type: string, default: en, examples: [en, he] }
+        theme: { type: string, enum: [light, dark, system], default: system }
+    Vehicle:
+      type: object
+      required: [make, model, color, plate]
+      properties:
+        make: { type: string, minLength: 1, maxLength: 50, examples: [Toyota] }
+        model: { type: string, minLength: 1, maxLength: 50, examples: [Corolla] }
+        color: { type: string, minLength: 1, maxLength: 30, examples: [White] }
+        plate:
+          type: string
+          minLength: 2
+          maxLength: 15
+          description: Stored as entered (trimmed, uppercased). Never in public views.
+          examples: [12-345-67]
+    VehiclePublic:
+      type: object
+      description: Vehicle without the plate — what anyone may see
+      required: [make, model, color]
+      properties:
+        make: { type: string }
+        model: { type: string }
+        color: { type: string }
+    UserMe:
+      type: object
+      description: The caller's own full profile (also used in admin views). Email mirrors the Clerk primary email.
+      required:
+        - id
+        - email
+        - name
+        - is_admin
+        - is_active
+        - driver_rating_count
+        - passenger_rating_count
+        - preferences
+        - created_at
+      properties:
+        id: { type: integer }
+        email: { type: string, format: email }
+        name: { type: string }
+        phone: { type: [string, "null"] }
+        date_of_birth: { type: [string, "null"], format: date }
+        gender:
+          oneOf:
+            - { $ref: "#/components/schemas/Gender" }
+            - { type: "null" }
+        is_admin: { type: boolean }
+        is_active: { type: boolean }
+        driver_rating: { type: [number, "null"], minimum: 1, maximum: 5 }
+        driver_rating_count: { type: integer }
+        passenger_rating: { type: [number, "null"], minimum: 1, maximum: 5 }
+        passenger_rating_count: { type: integer }
+        preferences: { $ref: "#/components/schemas/UserPreferences" }
+        vehicle:
+          oneOf:
+            - { $ref: "#/components/schemas/Vehicle" }
+            - { type: "null" }
+        created_at: { type: string, format: date-time }
+        last_login_at: { type: [string, "null"], format: date-time }
+    UserPublic:
+      type: object
+      description: What other users may see. No email/phone/DOB.
+      required: [id, name, driver_rating_count, passenger_rating_count, created_at]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        driver_rating: { type: [number, "null"] }
+        driver_rating_count: { type: integer }
+        passenger_rating: { type: [number, "null"] }
+        passenger_rating_count: { type: integer }
+        vehicle:
+          oneOf:
+            - { $ref: "#/components/schemas/VehiclePublic" }
+            - { type: "null" }
+        created_at: { type: string, format: date-time, description: "\"Member since\"" }
+    UserUpdate:
+      type: object
+      description: Email and password are changed in Clerk (UserProfile component), not here. is_admin/is_active are admin-only.
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        phone: { type: [string, "null"], maxLength: 20 }
+        gender:
+          oneOf:
+            - { $ref: "#/components/schemas/Gender" }
+            - { type: "null" }
+        preferences: { $ref: "#/components/schemas/UserPreferences" }
+        vehicle:
+          description: Full replace. null removes it (409 VEHICLE_REQUIRED if the user has upcoming/full rides).
+          oneOf:
+            - { $ref: "#/components/schemas/Vehicle" }
+            - { type: "null" }
+    UserStats:
+      type: object
+      required: [as_driver, as_passenger]
+      properties:
+        as_driver:
+          type: object
+          required: [rides_offered, rides_completed, upcoming_rides, pending_requests, passengers_carried]
+          properties:
+            rides_offered: { type: integer }
+            rides_completed: { type: integer }
+            upcoming_rides: { type: integer }
+            pending_requests: { type: integer, description: Home badge }
+            passengers_carried: { type: integer, description: Sum of approved seats on completed rides }
+        as_passenger:
+          type: object
+          required: [trips_requested, trips_completed, upcoming_trips]
+          properties:
+            trips_requested: { type: integer }
+            trips_completed: { type: integer }
+            upcoming_trips: { type: integer }
+
+    # ── rides ──
+    RidePreferences:
+      type: object
+      properties:
+        smoking: { type: boolean, default: false, description: "true = smoking allowed" }
+        pets: { type: boolean, default: false, description: "true = pets allowed" }
+        music: { type: boolean, default: true }
+        gender_only:
+          type: boolean
+          default: false
+          description: true = only passengers of the driver's gender (hard filter in matching)
+    RideCreate:
+      type: object
+      required:
+        [start_lat, start_lng, start_address, end_lat, end_lng, end_address, departure_time, capacity, price_per_seat]
+      properties:
+        start_lat: { $ref: "#/components/schemas/Latitude" }
+        start_lng: { $ref: "#/components/schemas/Longitude" }
+        start_address: { type: string, minLength: 1, maxLength: 255 }
+        end_lat: { $ref: "#/components/schemas/Latitude" }
+        end_lng: { $ref: "#/components/schemas/Longitude" }
+        end_address: { type: string, minLength: 1, maxLength: 255 }
+        departure_time:
+          type: string
+          format: date-time
+          description: Must be in the future (422 DEPARTURE_IN_PAST)
+        capacity: { type: integer, minimum: 1, maximum: 8 }
+        price_per_seat: { $ref: "#/components/schemas/Money" }
+        preferences: { $ref: "#/components/schemas/RidePreferences" }
+        notes: { type: [string, "null"], maxLength: 1000 }
+    RideUpdate:
+      type: object
+      description: All fields optional; see PATCH /rides/{id} for restrictions
+      properties:
+        start_lat: { $ref: "#/components/schemas/Latitude" }
+        start_lng: { $ref: "#/components/schemas/Longitude" }
+        start_address: { type: string, minLength: 1, maxLength: 255 }
+        end_lat: { $ref: "#/components/schemas/Latitude" }
+        end_lng: { $ref: "#/components/schemas/Longitude" }
+        end_address: { type: string, minLength: 1, maxLength: 255 }
+        departure_time: { type: string, format: date-time }
+        capacity: { type: integer, minimum: 1, maximum: 8 }
+        price_per_seat: { $ref: "#/components/schemas/Money" }
+        preferences: { $ref: "#/components/schemas/RidePreferences" }
+        notes: { type: [string, "null"], maxLength: 1000 }
+    Ride:
+      type: object
+      required:
+        - id
+        - driver
+        - start_lat
+        - start_lng
+        - start_address
+        - end_lat
+        - end_lng
+        - end_address
+        - departure_time
+        - capacity
+        - available_seats
+        - price_per_seat
+        - status
+        - preferences
+        - created_at
+        - updated_at
+      properties:
+        id: { type: integer }
+        driver: { $ref: "#/components/schemas/UserPublic" }
+        start_lat: { $ref: "#/components/schemas/Latitude" }
+        start_lng: { $ref: "#/components/schemas/Longitude" }
+        start_address: { type: string }
+        end_lat: { $ref: "#/components/schemas/Latitude" }
+        end_lng: { $ref: "#/components/schemas/Longitude" }
+        end_address: { type: string }
+        departure_time: { type: string, format: date-time }
+        capacity: { type: integer }
+        available_seats: { type: integer, minimum: 0 }
+        price_per_seat: { $ref: "#/components/schemas/Money" }
+        status: { $ref: "#/components/schemas/RideStatus" }
+        preferences: { $ref: "#/components/schemas/RidePreferences" }
+        notes: { type: [string, "null"] }
+        driver_vehicle_plate:
+          type: [string, "null"]
+          description: Only filled for the driver and for passengers with an approved request on this ride; null for everyone else
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    # ── search ──
+    ScoreBreakdown:
+      type: object
+      required: [route, time, price, rating, preferences]
+      properties:
+        route: { type: number, minimum: 0, maximum: 40 }
+        time: { type: number, minimum: 0, maximum: 25 }
+        price: { type: number, minimum: 0, maximum: 15 }
+        rating: { type: number, minimum: 0, maximum: 10 }
+        preferences: { type: number, minimum: 0, maximum: 10 }
+    RideMatch:
+      type: object
+      required: [ride, match_score, breakdown, pickup_distance_km, dropoff_distance_km]
+      properties:
+        ride: { $ref: "#/components/schemas/Ride" }
+        match_score: { type: number, minimum: 40, maximum: 100, description: Rounded to 1 decimal }
+        breakdown: { $ref: "#/components/schemas/ScoreBreakdown" }
+        pickup_distance_km: { type: number, minimum: 0 }
+        dropoff_distance_km: { type: number, minimum: 0 }
+
+    # ── requests ──
+    RideRequestCreate:
+      type: object
+      properties:
+        seats_requested: { type: integer, minimum: 1, maximum: 8, default: 1 }
+    RideRequest:
+      type: object
+      required: [id, ride, passenger, seats_requested, status, requested_at]
+      properties:
+        id: { type: integer }
+        ride: { $ref: "#/components/schemas/Ride" }
+        passenger: { $ref: "#/components/schemas/UserPublic" }
+        seats_requested: { type: integer }
+        status: { $ref: "#/components/schemas/RequestStatus" }
+        requested_at: { type: string, format: date-time }
+        responded_at: { type: [string, "null"], format: date-time }
+
+    # ── ratings ──
+    RatingCreate:
+      type: object
+      required: [ride_id, to_user_id, score]
+      properties:
+        ride_id: { type: integer }
+        to_user_id: { type: integer }
+        score: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: [string, "null"], maxLength: 1000 }
+        tags:
+          type: array
+          maxItems: 10
+          uniqueItems: true
+          items: { type: string, maxLength: 30 }
+          examples: [[on_time, clean_car, friendly]]
+    Rating:
+      type: object
+      required: [id, ride_id, from_user, to_user_id, role_rated, score, tags, created_at]
+      properties:
+        id: { type: integer }
+        ride_id: { type: integer }
+        from_user: { $ref: "#/components/schemas/UserPublic" }
+        to_user_id: { type: integer }
+        role_rated: { $ref: "#/components/schemas/RoleRated" }
+        score: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: [string, "null"] }
+        tags:
+          type: array
+          items: { type: string }
+        created_at: { type: string, format: date-time }
+    PendingRating:
+      type: object
+      required: [ride, to_user, role_rated]
+      properties:
+        ride: { $ref: "#/components/schemas/Ride" }
+        to_user: { $ref: "#/components/schemas/UserPublic" }
+        role_rated: { $ref: "#/components/schemas/RoleRated" }
+
+    # ── notifications ──
+    Notification:
+      type: object
+      required: [id, type, title, message, is_read, created_at]
+      properties:
+        id: { type: integer }
+        type: { $ref: "#/components/schemas/NotificationType" }
+        title: { type: string }
+        message: { type: string }
+        related_entity_type: { type: [string, "null"], enum: [ride, ride_request, null] }
+        related_entity_id: { type: [integer, "null"] }
+        is_read: { type: boolean }
+        created_at: { type: string, format: date-time }
+    WsServerMessage:
+      description: |
+        Messages the server sends on `GET /ws?token=<access_token>` (see CONTRACT.md §6).
+        Not an HTTP endpoint — defined here so all sides share the payload shape.
+      oneOf:
+        - type: object
+          required: [event, data]
+          properties:
+            event: { const: notification }
+            data: { $ref: "#/components/schemas/Notification" }
+        - type: object
+          required: [event]
+          properties:
+            event: { const: pong }
+
+    # ── admin ──
+    AdminUserDetail:
+      type: object
+      required: [user, rides_as_driver, requests_as_passenger, ratings_received]
+      properties:
+        user: { $ref: "#/components/schemas/UserMe" }
+        rides_as_driver:
+          type: array
+          items: { $ref: "#/components/schemas/Ride" }
+        requests_as_passenger:
+          type: array
+          items: { $ref: "#/components/schemas/RideRequest" }
+        ratings_received:
+          type: array
+          items: { $ref: "#/components/schemas/Rating" }
+    AnalyticsSummary:
+      type: object
+      required: [from, to, rides_created, rides_completed, rides_cancelled, completion_rate, requests_created, approval_rate, active_users, new_users]
+      properties:
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        rides_created: { type: integer }
+        rides_completed: { type: integer }
+        rides_cancelled: { type: integer }
+        completion_rate:
+          type: [number, "null"]
+          description: completed / (completed + cancelled) among rides departing in range; null if 0
+        requests_created: { type: integer }
+        approval_rate: { type: [number, "null"], description: approved / (approved + rejected) }
+        active_users: { type: integer, description: Users with last_login_at in range }
+        new_users: { type: integer }

@@ -1,0 +1,6 @@
+# Keep LF everywhere (Docker, CI and Linux servers expect it), even on Windows.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.png binary
+*.jpg binary
+*.ico binary
