@@ -149,16 +149,47 @@ class TestPatchValidation:
         )
         expect_error(response, 422, "VALIDATION_ERROR")
 
-    @pytest.mark.xfail(
-        reason='FAIL reported to @backend: PATCH /users/me coerces preferences.smoking="yes" '
-        "to true and returns 200. openapi.yaml types it as boolean and CONTRACT.md 2 says "
-        "openapi.yaml wins for shapes, so a string should be 422 VALIDATION_ERROR."
+    @pytest.mark.parametrize(
+        "preferences",
+        [
+            {"smoking": "yes"},
+            {"smoking": 1},
+            {"pets": "true"},
+            {"pets": 0},
+            {"notifications": {"email": "on"}},
+            {"notifications": {"push": 1}},
+            {"notifications": {"websocket": "false"}},
+        ],
+        ids=[
+            "smoking-yes",
+            "smoking-1",
+            "pets-true",
+            "pets-0",
+            "notifications-email-on",
+            "notifications-push-1",
+            "notifications-websocket-false",
+        ],
     )
-    async def test_wrong_type_for_a_boolean_preference(self, client, user) -> None:
-        response = await client.patch(
-            ME, json={"preferences": {"smoking": "yes"}}, headers=user.headers
-        )
+    async def test_boolean_preferences_reject_non_booleans(
+        self, client, user, preferences: dict
+    ) -> None:
+        """openapi.yaml types these as boolean, and CONTRACT.md 2 says
+        openapi.yaml wins for shapes - a truthy string is not a boolean."""
+        response = await client.patch(ME, json={"preferences": preferences}, headers=user.headers)
         expect_error(response, 422, "VALIDATION_ERROR")
+
+    async def test_real_booleans_still_work(self, client, user) -> None:
+        response = await client.patch(
+            ME,
+            json={
+                "preferences": {"smoking": True, "pets": False, "notifications": {"push": False}}
+            },
+            headers=user.headers,
+        )
+        prefs = expect_status(response, 200)["preferences"]
+        assert prefs["smoking"] is True
+        assert prefs["pets"] is False
+        assert prefs["notifications"] == {"email": True, "push": False, "websocket": True}
 
     async def test_validation_error_lists_the_field(self, client, user) -> None:
         body = expect_validation_error(
@@ -211,20 +242,10 @@ class TestPatchPermissions:
     async def test_requires_authentication(self, client) -> None:
         expect_error(await client.patch(ME, json={"name": "Dana"}), 401, "UNAUTHENTICATED")
 
-    @pytest.mark.xfail(
-        reason="Reported to @backend: openapi.yaml documents no 403 for this operation, "
-        "though CONTRACT.md 2 lets any authenticated endpoint return ONBOARDING_REQUIRED "
-        "or ACCOUNT_DEACTIVATED. The backend behaves correctly; the contract is incomplete."
-    )
     async def test_requires_onboarding(self, client, users) -> None:
         response = await client.patch(ME, json={"name": "Dana"}, headers=users.stranger_headers())
         expect_error(response, 403, "ONBOARDING_REQUIRED")
 
-    @pytest.mark.xfail(
-        reason="Reported to @backend: openapi.yaml documents no 403 for this operation, "
-        "though CONTRACT.md 2 lets any authenticated endpoint return ONBOARDING_REQUIRED "
-        "or ACCOUNT_DEACTIVATED. The backend behaves correctly; the contract is incomplete."
-    )
     async def test_deactivated_account_cannot_patch(self, client, users, user) -> None:
         await users.deactivate(user)
         response = await client.patch(ME, json={"name": "Dana"}, headers=user.headers)
