@@ -14,6 +14,9 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     css: true,
     restoreMocks: true,
+    // Screen tests drive a debounced combobox through MSW; 5s is not enough
+    // headroom when 17 files run in parallel on a cold worker.
+    testTimeout: 15_000,
     // Address autocomplete is only rendered when a token exists, so the suite
     // pins its own instead of depending on whatever the local .env holds.
     env: { VITE_MAPBOX_TOKEN: 'pk.test-token' },

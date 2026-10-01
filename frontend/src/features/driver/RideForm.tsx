@@ -55,7 +55,16 @@ function initialValues(ride: Ride | undefined): Values {
   }
 }
 
-/** Only what changed, because PATCH shallow-merges (D16) and locks some fields. */
+/**
+ * Only what changed. On a ride with an approved passenger the server treats a
+ * location field or `departure_time` as a change by **presence**, identical value
+ * or not, so sending an untouched field is a guaranteed 409 (contract 0.4.2).
+ *
+ * Departure is compared as the text the field holds rather than as an instant:
+ * `datetime-local` has minute precision, so a ride created with seconds on the
+ * clock can never round-trip exactly, and comparing instants would report a
+ * change the user never made.
+ */
 function changedFields(ride: Ride, values: Values, departureIso: string): RideUpdate {
   const patch: RideUpdate = {}
 
@@ -69,7 +78,9 @@ function changedFields(ride: Ride, values: Values, departureIso: string): RideUp
     patch.end_lat = values.end.lat
     patch.end_lng = values.end.lng
   }
-  if (departureIso !== ride.departure_time) patch.departure_time = departureIso
+  if (values.departure !== isoToDateTimeLocal(ride.departure_time)) {
+    patch.departure_time = departureIso
+  }
   if (values.capacity !== ride.capacity) patch.capacity = values.capacity
 
   const price = toMoney(values.price)
