@@ -6,10 +6,12 @@ import type {
   ApiErrorBody,
   OnboardingRequest,
   UserMe,
-  UserPatch,
+  UserPreferences,
+  UserPreferencesPatch,
+  UserUpdate,
   UserPublic,
 } from '../api/types'
-import { db, defaultPreferences } from './db'
+import { db, defaultNotifications, defaultPreferences } from './db'
 
 const base = env.apiBaseUrl.replace(/\/$/, '')
 
@@ -32,6 +34,25 @@ const badPhone = () =>
   fail(422, 'VALIDATION_ERROR', 'Request failed validation.', [
     { field: 'body.phone', message: PHONE_HINT },
   ])
+
+/**
+ * Preferences shallow-merge, and the `notifications` sub-object merges too
+ * (CONTRACT §4) — so a patch naming one key never drops the others.
+ */
+function mergePreferences(
+  current: UserPreferences,
+  patch: UserPreferencesPatch | undefined,
+): UserPreferences {
+  return {
+    ...current,
+    ...patch,
+    notifications: {
+      ...defaultNotifications,
+      ...current.notifications,
+      ...patch?.notifications,
+    },
+  }
+}
 
 function toPublic(user: UserMe): UserPublic {
   return {
@@ -97,7 +118,7 @@ export const handlers = [
       driver_rating_count: 0,
       passenger_rating: null,
       passenger_rating_count: 0,
-      preferences: { ...defaultPreferences, ...body.preferences },
+      preferences: mergePreferences(defaultPreferences, body.preferences),
       vehicle: body.vehicle ?? null,
       created_at: new Date().toISOString(),
       last_login_at: new Date().toISOString(),
@@ -109,7 +130,7 @@ export const handlers = [
     if (!signedIn(request)) return unauthenticated()
     if (!db.me) return fail(403, 'ONBOARDING_REQUIRED', 'Complete onboarding first.')
 
-    const patch = (await request.json()) as UserPatch
+    const patch = (await request.json()) as UserUpdate
     if (patch.phone !== null && patch.phone !== undefined && !isValidPhone(patch.phone)) {
       return badPhone()
     }
@@ -118,15 +139,8 @@ export const handlers = [
     db.me = {
       ...db.me,
       ...rest,
-      preferences: {
-        ...db.me.preferences,
-        ...preferences,
-        notifications: {
-          ...(db.me.preferences.notifications ?? defaultPreferences.notifications),
-          ...preferences?.notifications,
-        },
-      },
-    } as UserMe
+      preferences: mergePreferences(db.me.preferences, preferences),
+    }
     return HttpResponse.json(db.me)
   }),
 

@@ -647,6 +647,17 @@ export interface components {
          * @example 25.50
          */
         Money: string;
+        /**
+         * @description Unverified profile field (SMS verification is out of scope for v1). The same format applies
+         *     wherever a phone is written — onboarding and PATCH /users/me alike.
+         *     Allowed: digits, spaces, hyphens, parentheses, dots, and an optional leading `+`.
+         *     7-20 characters after the `+`, so parenthesised and dotted formats are accepted as typed.
+         * @example +972 50-123-4567
+         * @example 050-123-4567
+         * @example +1 (555) 010-9999
+         * @example +1.555.0199
+         */
+        Phone: string;
         /** @enum {string} */
         Gender: "male" | "female" | "other" | "prefer_not_to_say";
         /** @enum {string} */
@@ -662,14 +673,14 @@ export interface components {
         /** @description Email and password are NOT here, since they live in Clerk. Frontend may prefill name from Clerk. */
         OnboardingRequest: {
             name: string;
-            phone?: string | null;
+            phone?: components["schemas"]["Phone"] | null;
             /**
              * Format: date
              * @description Must be 18+ today (422 UNDERAGE)
              */
             date_of_birth: string;
             gender?: components["schemas"]["Gender"] | null;
-            preferences?: components["schemas"]["UserPreferences"];
+            preferences?: components["schemas"]["UserPreferencesPatch"];
             /** @description Optional here; required before offering a ride */
             vehicle?: components["schemas"]["Vehicle"] | null;
             /** @constant */
@@ -683,7 +694,10 @@ export interface components {
             /** @default true */
             websocket: boolean;
         };
-        /** @description All keys optional; server fills defaults on read */
+        /**
+         * @description Read shape: the server fills every default, so all keys are present in a response.
+         *     Writes use UserPreferencesPatch instead.
+         */
         UserPreferences: {
             /** @description null → client shows Role Selection */
             default_mode?: components["schemas"]["Mode"] | null;
@@ -709,6 +723,38 @@ export interface components {
              * @enum {string}
              */
             theme: "light" | "dark" | "system";
+        };
+        /**
+         * @description Write shape for NotificationPrefs. No defaults, so an absent key means "leave it alone";
+         *     the server merges what is sent into the stored sub-object.
+         */
+        NotificationPrefsPatch: {
+            email?: boolean;
+            push?: boolean;
+            websocket?: boolean;
+        };
+        /**
+         * @description Write shape for UserPreferences, used by PATCH /users/me and POST /users/me/onboarding.
+         *     Shallow merge, with the `notifications` sub-object merged too (CONTRACT.md §4 Users).
+         *     Carries no defaults — that is what separates it from UserPreferences, which is the read
+         *     shape and always comes back complete. An absent key is left alone; `default_mode: null`
+         *     genuinely clears it.
+         */
+        UserPreferencesPatch: {
+            /** @description null → client shows Role Selection */
+            default_mode?: components["schemas"]["Mode"] | null;
+            /** @description true = OK with smoking */
+            smoking?: boolean;
+            /** @description true = OK with pets */
+            pets?: boolean;
+            notifications?: components["schemas"]["NotificationPrefsPatch"];
+            /**
+             * @example en
+             * @example he
+             */
+            language?: string;
+            /** @enum {string} */
+            theme?: "light" | "dark" | "system";
         };
         Vehicle: {
             /** @example Toyota */
@@ -770,9 +816,9 @@ export interface components {
         /** @description Email and password are changed in Clerk (UserProfile component), not here. is_admin/is_active are admin-only. */
         UserUpdate: {
             name?: string;
-            phone?: string | null;
+            phone?: components["schemas"]["Phone"] | null;
             gender?: components["schemas"]["Gender"] | null;
-            preferences?: components["schemas"]["UserPreferences"];
+            preferences?: components["schemas"]["UserPreferencesPatch"];
             /** @description Full replace. null removes it (409 VEHICLE_REQUIRED if the user has upcoming/full rides). */
             vehicle?: components["schemas"]["Vehicle"] | null;
         };
@@ -811,6 +857,20 @@ export interface components {
              */
             gender_only: boolean;
         };
+        /**
+         * @description Write shape for RidePreferences, used by POST /rides and PATCH /rides/{ride_id}. No
+         *     defaults: on create the server fills them, and on PATCH an absent key is left alone —
+         *     a shallow merge of all four keys, exactly like user preferences (CONTRACT.md §4 Rides).
+         */
+        RidePreferencesPatch: {
+            /** @description true = smoking allowed */
+            smoking?: boolean;
+            /** @description true = pets allowed */
+            pets?: boolean;
+            music?: boolean;
+            /** @description true = only passengers of the driver's gender (hard filter in matching) */
+            gender_only?: boolean;
+        };
         RideCreate: {
             start_lat: components["schemas"]["Latitude"];
             start_lng: components["schemas"]["Longitude"];
@@ -825,7 +885,7 @@ export interface components {
             departure_time: string;
             capacity: number;
             price_per_seat: components["schemas"]["Money"];
-            preferences?: components["schemas"]["RidePreferences"];
+            preferences?: components["schemas"]["RidePreferencesPatch"];
             notes?: string | null;
         };
         /** @description All fields optional; see PATCH /rides/{id} for restrictions */
@@ -840,7 +900,7 @@ export interface components {
             departure_time?: string;
             capacity?: number;
             price_per_seat?: components["schemas"]["Money"];
-            preferences?: components["schemas"]["RidePreferences"];
+            preferences?: components["schemas"]["RidePreferencesPatch"];
             notes?: string | null;
         };
         Ride: {
@@ -1178,6 +1238,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationError"];
         };
     };
@@ -1200,6 +1261,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     getUserPublic: {
@@ -1223,6 +1285,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -1251,6 +1314,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -1277,6 +1341,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["ValidationError"];
         };
@@ -1305,6 +1370,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     getRide: {
@@ -1328,6 +1394,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -1492,6 +1559,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["ValidationError"];
@@ -1521,6 +1589,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     listIncomingRequests: {
@@ -1544,6 +1613,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     getRequest: {
@@ -1681,6 +1751,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationError"];
         };
     };
@@ -1732,6 +1803,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     listNotifications: {
@@ -1757,6 +1829,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     clearNotifications: {
@@ -1776,6 +1849,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     getUnreadCount: {
@@ -1799,6 +1873,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     markNotificationRead: {
@@ -1822,6 +1897,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -1842,6 +1918,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     adminListUsers: {

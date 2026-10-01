@@ -1,15 +1,21 @@
-import type { UserMe, UserPreferences } from '../api/types'
+import type { NotificationPrefs, UserMe, UserPreferences } from '../api/types'
 
 /**
  * A tiny in-memory stand-in for the backend, shaped exactly like
  * contracts/openapi.yaml. It exists so screens can be built and tested before
  * @backend ships an endpoint — not as a second source of truth.
  */
+export const defaultNotifications: NotificationPrefs = {
+  email: true,
+  push: true,
+  websocket: true,
+}
+
 export const defaultPreferences: UserPreferences = {
   default_mode: null,
   smoking: false,
   pets: false,
-  notifications: { email: true, push: true, websocket: true },
+  notifications: defaultNotifications,
   language: 'en',
   theme: 'system',
 }

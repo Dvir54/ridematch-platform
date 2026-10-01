@@ -22,22 +22,11 @@ export type UserUpdate = Schemas['UserUpdate']
 export type UserStats = Schemas['UserStats']
 export type UserPreferences = Schemas['UserPreferences']
 export type NotificationPrefs = Schemas['NotificationPrefs']
+/** The write shape: every key optional, because PATCH shallow-merges (CONTRACT §4). */
+export type UserPreferencesPatch = Schemas['UserPreferencesPatch']
 export type Vehicle = Schemas['Vehicle']
 export type OnboardingRequest = Schemas['OnboardingRequest']
 
 export type Ride = Schemas['Ride']
 export type RideRequest = Schemas['RideRequest']
 export type Notification = Schemas['Notification']
-
-/**
- * PATCH /users/me shallow-merges preferences (CONTRACT §4), so a partial object
- * is valid on the wire. The generated `UserPreferences` marks every key with a
- * schema default as required, which is right for reads but not for this patch.
- */
-export type UserPreferencesPatch = Partial<Omit<UserPreferences, 'notifications'>> & {
-  notifications?: Partial<NotificationPrefs>
-}
-
-export type UserPatch = Omit<UserUpdate, 'preferences'> & {
-  preferences?: UserPreferencesPatch
-}

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../client'
 import { isApiError } from '../errors'
 import { sessionKey } from '../keys'
-import type { OnboardingRequest, UserMe, UserPatch } from '../types'
+import type { OnboardingRequest, UserMe, UserUpdate } from '../types'
 
 /**
  * `GET /users/me` answers three different things, and only one of them is a
@@ -46,7 +46,7 @@ export function useCompleteOnboarding() {
 export function useUpdateMe() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (body: UserPatch) => api.patch<UserMe>('/users/me', body),
+    mutationFn: (body: UserUpdate) => api.patch<UserMe>('/users/me', body),
     onSuccess: (user) => {
       const session: Session = { status: 'ready', user }
       queryClient.setQueryData(sessionKey, session)

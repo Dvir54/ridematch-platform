@@ -58,3 +58,32 @@ describe('mock API matches the contract', () => {
     expect(error.code).toBe('TERMS_NOT_ACCEPTED')
   })
 })
+
+describe('preference merging', () => {
+  it('keeps the other notification keys when a patch names one', async () => {
+    seedOnboardedMe()
+
+    await expect(
+      api.patch('/users/me', { preferences: { notifications: { email: false } } }),
+    ).resolves.toMatchObject({
+      preferences: {
+        notifications: { email: false, push: true, websocket: true },
+        language: 'en',
+        default_mode: null,
+      },
+    })
+  })
+
+  it('fills the notification defaults when onboarding sends a partial sub-object', async () => {
+    await expect(
+      api.post('/users/me/onboarding', {
+        name: 'Dvir Levi',
+        date_of_birth: '1996-02-11',
+        accepted_terms: true,
+        preferences: { notifications: { websocket: false } },
+      }),
+    ).resolves.toMatchObject({
+      preferences: { notifications: { email: true, push: true, websocket: false } },
+    })
+  })
+})
