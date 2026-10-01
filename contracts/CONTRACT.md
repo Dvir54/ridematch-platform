@@ -41,11 +41,12 @@ If the two disagree, `openapi.yaml` wins for shapes and this file wins for behav
   - **Webhooks** (`POST /webhooks/clerk`) are only for keeping data in sync later (email change, account deleted). Onboarding never waits on them, because they are async and can be delayed, repeated or out of order.
   - **Tests** never call Clerk. With `APP_ENV=test`, @tests generates its own RSA key pair, sets `CLERK_JWT_KEY` to the public key, and signs tokens with the private key using the same claims (`sub`, `email`, `azp`, `iss`, `exp`, `nbf`). The backend has no test-only bypass: the code path is identical, only the key differs.
 - **IDs:** integers.
-- **Timestamps:** ISO 8601. The server always returns UTC with `Z`, and accepts any offset.
-- **Money:** decimal **string** with 2 places, e.g. `"25.50"` (Pydantic `Decimal` serializes this way). Never a float.
+- **Timestamps:** ISO 8601. The server always returns UTC with `Z` at **second** resolution (microseconds are dropped), and accepts any offset; a naive datetime is read as UTC.
+- **Money:** decimal **string**, e.g. `"25.50"`. Never a float — a JSON number in a request body is a 422 `VALIDATION_ERROR`, since that's what typing it as a string is for. On the way in, 1 or 2 decimal places or none (`"25"`, `"25.5"` and `"25.50"` are all fine); on the way out, always 2.
 - **Emails:** lowercased and trimmed by the server before storing or looking up.
 - **Lists:** plain JSON arrays with `limit` (default 20, max 100) and `offset`. Admin lists also return an `X-Total-Count` header.
-- **Status filters:** comma-separated, e.g. `?status=upcoming,full`. An unknown value is a 422 `VALIDATION_ERROR` with `details[].field = "query.status"`, the same answer a single-value enum parameter gives. Repeats are ignored.
+- **Status filters:** comma-separated, e.g. `?status=upcoming,full`. An unknown value is a 422 `VALIDATION_ERROR` with `details[].field = "query.status"`, the same answer a single-value enum parameter gives. Repeats are ignored, and an empty value (`?status=`, or one that is all commas) means **no filter** rather than an error — it's what a filter UI sends with nothing selected.
+- **Non-nullable fields:** a property `openapi.yaml` does not give a `"null"` type may be **absent** from a `PATCH` body — that means "leave it alone" — but sending it as `null` is a 422 `VALIDATION_ERROR`. `details[].field` names the field itself (`body.start_lat`, `body.preferences.pets`), never just `body`. The nullable ones are `notes` on a ride, `phone`, `gender` and `vehicle` on a user, and `preferences.default_mode`.
 - **Errors:** always `{ "code": "...", "message": "...", "details"?: [...] }`. The backend overrides FastAPI's default `{"detail": ...}` and its 422 format to match. Clients branch on `code`, never on `message`.
 - **Not found vs forbidden:** a resource that exists but isn't yours → 403. One that doesn't exist → 404.
 - **CORS:** allowed origins come from `CORS_ORIGINS`.
