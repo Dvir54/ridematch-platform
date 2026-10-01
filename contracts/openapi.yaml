@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: RideMatch API
-  version: 0.4.3
+  version: 0.4.4
   description: |
     Contract for the RideMatch monolith (FastAPI). Source of truth for backend, frontend and tests.
     See CONTRACT.md for conventions, state machines, business rules, error codes and the WebSocket protocol.
@@ -1231,6 +1231,15 @@ components:
         price_per_seat: { $ref: "#/components/schemas/Money" }
         preferences: { $ref: "#/components/schemas/RidePreferencesPatch" }
         notes: { type: [string, "null"], maxLength: 1000 }
+    MyRequest:
+      type: object
+      description: |
+        The caller's own request on a ride, as carried by Ride.my_request.
+      required: [id, status, seats_requested]
+      properties:
+        id: { type: integer, description: "The id to use for POST /requests/{request_id}/cancel" }
+        status: { $ref: "#/components/schemas/RequestStatus" }
+        seats_requested: { type: integer }
     Ride:
       type: object
       required:
@@ -1269,6 +1278,17 @@ components:
         driver_vehicle_plate:
           type: [string, "null"]
           description: Only filled for the driver and for passengers with an approved request on this ride; null for everyone else
+        my_request:
+          description: |
+            The caller's own blocking request on this ride - the single pending/approved/rejected
+            row allowed per (ride, passenger). Null when the caller never requested it, after
+            their own cancel (so the request button comes back - CONTRACT.md D2), and for a
+            driver on their own ride. Inside a RideRequest this is the caller's *current* request
+            on that ride, which may differ from the row you are holding: in request lists read
+            the outer object, which is strictly more informative.
+          oneOf:
+            - { $ref: "#/components/schemas/MyRequest" }
+            - { type: "null" }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
 
