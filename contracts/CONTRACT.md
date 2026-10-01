@@ -45,7 +45,7 @@ If the two disagree, `openapi.yaml` wins for shapes and this file wins for behav
 - **Money:** decimal **string** with 2 places, e.g. `"25.50"` (Pydantic `Decimal` serializes this way). Never a float.
 - **Emails:** lowercased and trimmed by the server before storing or looking up.
 - **Lists:** plain JSON arrays with `limit` (default 20, max 100) and `offset`. Admin lists also return an `X-Total-Count` header.
-- **Status filters:** comma-separated, e.g. `?status=upcoming,full`.
+- **Status filters:** comma-separated, e.g. `?status=upcoming,full`. An unknown value is a 422 `VALIDATION_ERROR` with `details[].field = "query.status"`, the same answer a single-value enum parameter gives. Repeats are ignored.
 - **Errors:** always `{ "code": "...", "message": "...", "details"?: [...] }`. The backend overrides FastAPI's default `{"detail": ...}` and its 422 format to match. Clients branch on `code`, never on `message`.
 - **Not found vs forbidden:** a resource that exists but isn't yours → 403. One that doesn't exist → 404.
 - **CORS:** allowed origins come from `CORS_ORIGINS`.
@@ -83,7 +83,8 @@ pending ──ride started / stale──▶ rejected
 - **Approve** runs in one transaction: `SELECT … FOR UPDATE` on the ride, check `available_seats ≥ seats_requested` (else 409 `NOT_ENOUGH_SEATS`), decrement, set `full` at 0, update the request, create the notification. The WS push/email happens **after commit**.
 - **Edit** (`PATCH`): only in `upcoming`/`full`. With ≥1 approved request, changes to any location field or `departure_time` → 409 `RIDE_HAS_APPROVED_PASSENGERS`, and `capacity` below the approved seats → 409 `CAPACITY_BELOW_APPROVED`. Price/notes/preferences are always editable.
 - **Preferences on `PATCH`** shallow-merge, exactly like user preferences: an absent key is left alone, and all four keys (`smoking`, `pets`, `music`, `gender_only`) behave the same way. So the Edit Ride form may send only what changed. Reads (`Ride.preferences`) always come back complete, with the server's defaults filled; writes use `RidePreferencesPatch`, which has none. Booleans must be real JSON booleans.
-- **Cancel** is allowed even with approved passengers (they're notified). The design doc's "edit or cancel only without approved passengers" is read as applying to *edit*, because `cancel_ride` explicitly notifies approved passengers.
+- **Cancel** is allowed even with approved passengers (they're notified). The design doc's "edit or cancel only without approved passengers" is read as applying to *edit*, because `cancel_ride` explicitly notifies approved passengers. Every pending and approved request becomes `cancelled`, so `available_seats` goes back to `capacity` and the invariant above still holds.
+- A locked field counts as a **change** when the key is present, even if the value is identical — the server compares what was sent, not what it means. And a `departure_time` sent on `PATCH` must still be in the future (422 `DEPARTURE_IN_PAST`), exactly as on create.
 
 **Requests**
 - A passenger can't request their own ride (409 `CANNOT_REQUEST_OWN_RIDE`).
@@ -91,6 +92,9 @@ pending ──ride started / stale──▶ rejected
 - At most one pending/approved request per (ride, passenger) (409 `REQUEST_ALREADY_EXISTS`).
 - If the driver rejected the passenger on this ride, they can't request it again (409 `PREVIOUSLY_REJECTED`). After the passenger's **own** cancel, re-requesting is allowed (seats permitting).
 - Auto-rejections (ride started / stale) don't matter here, since the ride is no longer open anyway.
+- The 409s on `POST /rides/{id}/requests` are checked in the order `openapi.yaml` lists them: own ride, ride not open, seats, active request, previously rejected. So a passenger who already has a pending request and asks for more seats than are free gets `NOT_ENOUGH_SEATS`, not `REQUEST_ALREADY_EXISTS`.
+- **Cancelling** a request needs the ride itself to still be `upcoming`/`full`. On an `in_progress` or finished ride it's `INVALID_STATE_TRANSITION`, not `TOO_LATE_TO_CANCEL` — the cutoff only decides between a seat the passenger may still give back and one they may not. At exactly `departure_time − 1h` the cancel is still allowed.
+- **Approving** needs the ride `upcoming`/`full`: `in_progress` or terminal is `INVALID_STATE_TRANSITION`, while a `full` ride has no free seat and so answers `NOT_ENOUGH_SEATS`.
 
 **Vehicles**
 - `users.vehicle = {make, model, color, plate}`. It's set at onboarding (optional) or with `PATCH /users/me` (full replace).
@@ -207,6 +211,7 @@ Let `R = SEARCH_RADIUS_KM`, `p = haversine(passenger start, ride start)`, `d = h
 | D16 | **Ride preferences on `PATCH` shallow-merge**, absent keys left alone — same rule as user preferences (2026-10-01) | Asked by @frontend: the Edit Ride form has to know whether a partial object wipes the rest. One merge rule for both kinds of preferences is less to remember |
 | D17 | **The `Phone` format applies to `PATCH /users/me`, not just onboarding** (2026-10-01). Breaking: a loose phone that used to be accepted is now 422 | @tests and @frontend both flagged the inconsistency. One `Phone` schema is now shared by both request bodies so they can't drift |
 | D18 | **`Phone` widened to allow parentheses and dots** (2026-10-01), so `+1 (555) 010-9999` is valid. Additive — nothing that was accepted became invalid | @tests and @frontend independently called parenthesised numbers a natural thing to type. Cheaper to widen before the profile editor is built against the strict rule |
+| D19 | **The Phase 2 edge cases are now written down** (2026-10-01): the 409 order on creating a request, `available_seats` returning to `capacity` when a ride is cancelled, a locked field counting as a change by presence, `DEPARTURE_IN_PAST` applying to `PATCH` too, `INVALID_STATE_TRANSITION` (not `TOO_LATE_TO_CANCEL`) once the ride has started, `NOT_ENOUGH_SEATS` when approving on a `full` ride, and an unknown `status` filter being a 422. Each one was undefined before, so nothing documented changed meaning | Writing the ride loop turned up seven places where two readings were equally defensible. @tests has to assert exactly one of them, so the contract now says which |
 
 ## 9. Scope — what's in v1 and what's later (decided 2026-09-30)
 
