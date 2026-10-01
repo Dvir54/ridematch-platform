@@ -3,4 +3,4 @@
 `__version__` mirrors `info.version` in `contracts/openapi.yaml`; bump both together.
 """
 
-__version__ = "0.3.2"
+__version__ = "0.4.0"
