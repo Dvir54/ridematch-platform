@@ -24,6 +24,8 @@ export const requestKeys = {
   all: ['requests'] as const,
   mine: (statuses?: readonly RequestStatus[]) => ['requests', 'mine', filter(statuses)] as const,
   incoming: (status?: RequestStatus) => ['requests', 'incoming', status ?? 'pending'] as const,
+  /** The caller's own request on one ride, derived from `/requests/mine`. */
+  onRide: (rideId: number) => ['requests', 'mine', 'on-ride', rideId] as const,
   detail: (requestId: number) => ['requests', 'detail', requestId] as const,
 }
 
