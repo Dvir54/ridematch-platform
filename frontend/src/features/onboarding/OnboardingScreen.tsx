@@ -10,6 +10,7 @@ import { CheckboxField, SelectField, TextField } from '../../components/Field'
 import { ErrorNotice, FullScreenLoader } from '../../components/states'
 import { Wordmark } from '../../components/Wordmark'
 import { isAdult, todayAsDateInput } from '../../lib/dates'
+import { isValidPhone, PHONE_HINT } from '../../lib/phone'
 
 const GENDERS: { value: Gender; label: string }[] = [
   { value: 'female', label: 'Female' },
@@ -17,8 +18,6 @@ const GENDERS: { value: Gender; label: string }[] = [
   { value: 'other', label: 'Other' },
   { value: 'prefer_not_to_say', label: 'Prefer not to say' },
 ]
-
-const PHONE_PATTERN = /^\+?[0-9 -]{7,20}$/
 
 interface FormState {
   name: string
@@ -39,8 +38,8 @@ function validate(form: FormState): Errors {
   const errors: Errors = {}
 
   if (!form.name.trim()) errors.name = 'Tell drivers what to call you.'
-  if (form.phone.trim() && !PHONE_PATTERN.test(form.phone.trim())) {
-    errors.phone = 'Use digits, spaces and dashes, 7 to 20 characters.'
+  if (form.phone.trim() && !isValidPhone(form.phone)) {
+    errors.phone = PHONE_HINT
   }
 
   if (!form.dateOfBirth) {

@@ -1,6 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import { env } from '../env'
 import { isAdult } from '../lib/dates'
+import { isValidPhone } from '../lib/phone'
 import type {
   ApiErrorBody,
   OnboardingRequest,
@@ -25,6 +26,12 @@ function signedIn(request: Request): boolean {
 
 const unauthenticated = () =>
   fail(401, 'UNAUTHENTICATED', 'Missing or invalid session token.')
+
+/** openapi.yaml shares one `Phone` primitive across onboarding and PATCH. */
+const badPhone = () =>
+  fail(422, 'VALIDATION_ERROR', 'Request failed validation.', [
+    { field: 'body.phone', message: 'Use digits, spaces and hyphens, 7 to 20 characters.' },
+  ])
 
 function toPublic(user: UserMe): UserPublic {
   return {
@@ -68,6 +75,9 @@ export const handlers = [
         { field: 'body.accepted_terms', message: 'Acceptance is required.' },
       ])
     }
+    if (body.phone !== null && body.phone !== undefined && !isValidPhone(body.phone)) {
+      return badPhone()
+    }
     if (!isAdult(body.date_of_birth)) {
       return fail(422, 'UNDERAGE', 'You must be 18 or older.', [
         { field: 'body.date_of_birth', message: 'Must be 18 or older.' },
@@ -100,6 +110,10 @@ export const handlers = [
     if (!db.me) return fail(403, 'ONBOARDING_REQUIRED', 'Complete onboarding first.')
 
     const patch = (await request.json()) as UserPatch
+    if (patch.phone !== null && patch.phone !== undefined && !isValidPhone(patch.phone)) {
+      return badPhone()
+    }
+
     const { preferences, ...rest } = patch
     db.me = {
       ...db.me,
