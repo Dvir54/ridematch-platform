@@ -1,0 +1,48 @@
+[project]
+name = "ridematch-tests"
+version = "0.1.0"
+description = "Contract tests for the RideMatch backend. Written from contracts/, never from backend code."
+requires-python = ">=3.12"
+
+dependencies = [
+    # ── the system under test ────────────────────────────────────────────
+    "ridematch-backend",
+
+    # ── harness ──────────────────────────────────────────────────────────
+    "pytest>=8.3",
+    "pytest-asyncio>=0.26",
+    "httpx>=0.28",
+    "asgi-lifespan>=2.1",
+    "asyncpg>=0.30",
+    "pyjwt[crypto]>=2.10",
+    "jsonschema[format-nongpl]>=4.23",
+    "pyyaml>=6.0.2",
+    "freezegun>=1.5",
+    "ruff>=0.8",
+]
+
+[tool.uv.sources]
+ridematch-backend = { path = "../backend", editable = true }
+
+[tool.pytest.ini_options]
+testpaths = ["unit", "api"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+addopts = "-ra --strict-markers"
+markers = [
+    "contract: asserts a specific rule from contracts/CONTRACT.md",
+]
+filterwarnings = ["error::DeprecationWarning:support.*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"api/*" = ["E501"]
