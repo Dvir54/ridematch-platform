@@ -4,7 +4,7 @@ from datetime import date
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
 from app.schemas import ApiModel, UtcDatetime
 
@@ -48,17 +48,22 @@ class UserPreferences(BaseModel):
 
 
 class NotificationPrefsPatch(BaseModel):
-    """Only the keys the client actually sent are merged (CONTRACT.md §4 Users)."""
+    """Only the keys the client actually sent are merged (CONTRACT.md §4 Users).
 
-    email: bool | None = None
-    push: bool | None = None
-    websocket: bool | None = None
+    `StrictBool` here and in `UserPreferencesPatch`/`OnboardingRequest`: openapi.yaml says
+    `type: boolean`, so `"yes"` is not a boolean. The response models stay lenient, because
+    coercing a stored oddity beats turning a read into a 500.
+    """
+
+    email: StrictBool | None = None
+    push: StrictBool | None = None
+    websocket: StrictBool | None = None
 
 
 class UserPreferencesPatch(BaseModel):
     default_mode: Mode | None = None
-    smoking: bool | None = None
-    pets: bool | None = None
+    smoking: StrictBool | None = None
+    pets: StrictBool | None = None
     notifications: NotificationPrefsPatch | None = None
     language: str | None = None
     theme: Theme | None = None
@@ -99,8 +104,9 @@ class OnboardingRequest(BaseModel):
     gender: Gender | None = None
     preferences: UserPreferencesPatch | None = None
     vehicle: Vehicle | None = None
-    # Enforced in the service so the failure carries code TERMS_NOT_ACCEPTED, not VALIDATION_ERROR.
-    accepted_terms: bool
+    # `false` is enforced in the service so the failure carries TERMS_NOT_ACCEPTED rather than
+    # VALIDATION_ERROR; a non-boolean is a plain shape error.
+    accepted_terms: StrictBool
 
 
 class UserUpdate(BaseModel):
