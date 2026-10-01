@@ -3,7 +3,7 @@
 Phases run one at a time. Inside a phase, the three sessions work in parallel.
 A phase is **done** only when its gate passes. Then Dvir merges into `main` and starts the next phase.
 
-**Merge order at each gate:** `feat/backend` → `feat/tests` → `feat/frontend` into `main`. Then every session runs `git merge main`.
+**Merge order at each gate:** `feat/backend` → `feat/tests` → `feat/frontend` into `main`, via each session's GitHub PR (merge commits only). Dvir pulls `main` locally, then every session runs `git merge main`.
 
 ---
 

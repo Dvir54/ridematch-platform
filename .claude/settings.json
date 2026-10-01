@@ -16,7 +16,17 @@
       "Bash(npm run:*)",
       "Bash(npx openapi-typescript:*)",
       "Bash(docker compose ps)",
-      "Bash(docker compose logs:*)"
+      "Bash(docker compose logs:*)",
+      "Bash(git push origin feat/backend)",
+      "Bash(git push origin feat/frontend)",
+      "Bash(git push origin feat/tests)",
+      "Bash(git push -u origin feat/backend)",
+      "Bash(git push -u origin feat/frontend)",
+      "Bash(git push -u origin feat/tests)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh pr edit:*)"
     ],
     "deny": [
       "Bash(git push --force:*)",
@@ -25,6 +35,11 @@
       "Bash(git rebase:*)",
       "Bash(git checkout main:*)",
       "Bash(git switch main:*)",
+      "Bash(git push origin main:*)",
+      "Bash(git push origin HEAD:main:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh pr close:*)",
+      "Bash(gh pr review:*)",
       "Read(./.env)",
       "Read(**/.env)"
     ]

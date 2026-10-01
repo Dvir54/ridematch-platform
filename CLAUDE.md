@@ -20,7 +20,7 @@ belong to Dvir. Propose changes to him; don't edit them.
 
 ## Work order
 - Work phase by phase from `PLAN.md`. Do only **your** tasks for the **current** phase.
-- When your phase tasks are done: commit, message the sessions that depend on you, then stop and give Dvir a short summary (what's done, what's blocked, anything he must decide). Don't start the next phase until Dvir says so.
+- When your phase tasks are done: commit, push your branch and open a PR into `main` (see Git), message the sessions that depend on you, then stop and give Dvir a short summary (what's done, what's blocked, anything he must decide, and the PR link). Don't start the next phase until Dvir says so.
 
 ## Git
 - Stay on your own branch. Never check out `main` or another branch. Never rebase, force-push or `reset --hard`.
@@ -30,6 +30,9 @@ belong to Dvir. Propose changes to him; don't edit them.
   - @tests may also `git merge feat/backend` to test fresh backend work.
 - Commit at every meaningful step (an endpoint works, a screen works, a test group passes). Keep commits small and focused.
 - Use conventional commits: `feat(rides): …`, `fix(requests): …`, `test(search): …`, `contract: …`, `chore: …`.
+- The repo is on GitHub (`Dvir54/ridematch-platform`, private). Push only your own branch: `git push origin feat/<role>`. Never push `main` or another session's branch.
+- At the end of each phase, open one PR from your branch into `main` with `gh pr create` (title `Phase N: <role> – <summary>`; body: what's done, checks you ran and their results, contract version, anything Dvir must decide). If your PR is already open, pushing updates it.
+- Never merge, approve or close a PR. Dvir reviews and merges on GitHub (merge commits only, in the order backend → tests → frontend), pulls `main` locally, then tells you; then you run `git merge main`.
 - Run your checks before committing (see your role file). Don't commit red code, except @tests committing a failing test that documents a real bug (mark it `xfail` with the bug reference).
 - Never commit `.env` or secrets. Never read `.env`; `.env.example` lists every key.
 
