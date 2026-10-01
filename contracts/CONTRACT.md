@@ -22,6 +22,7 @@ If the two disagree, `openapi.yaml` wins for shapes and this file wins for behav
 
 - **Only @backend edits `/contracts`.** Others who need a change message @backend with the proposed change and the reason.
 - Every contract change: bump `info.version` in `openapi.yaml` (patch = additive, minor = breaking), commit it **on its own** (`contract: …`), then message @frontend and @tests with *what changed, whether it's breaking, and the commit hash*.
+- **Additive** changes don't need Dvir's approval — bump, commit, notify. **Breaking** changes do (decided 2026-10-01).
 - Never "fix" the contract silently in your own code. If the implementation can't match it, raise it.
 
 ## 2. Conventions
@@ -81,6 +82,7 @@ pending ──ride started / stale──▶ rejected
 - `available_seats = capacity − SUM(seats_requested of approved requests)` must hold at all times.
 - **Approve** runs in one transaction: `SELECT … FOR UPDATE` on the ride, check `available_seats ≥ seats_requested` (else 409 `NOT_ENOUGH_SEATS`), decrement, set `full` at 0, update the request, create the notification. The WS push/email happens **after commit**.
 - **Edit** (`PATCH`): only in `upcoming`/`full`. With ≥1 approved request, changes to any location field or `departure_time` → 409 `RIDE_HAS_APPROVED_PASSENGERS`, and `capacity` below the approved seats → 409 `CAPACITY_BELOW_APPROVED`. Price/notes/preferences are always editable.
+- **Preferences on `PATCH`** shallow-merge, exactly like user preferences: an absent key is left alone, and all four keys (`smoking`, `pets`, `music`, `gender_only`) behave the same way. So the Edit Ride form may send only what changed. Reads (`Ride.preferences`) always come back complete, with the server's defaults filled; writes use `RidePreferencesPatch`, which has none. Booleans must be real JSON booleans.
 - **Cancel** is allowed even with approved passengers (they're notified). The design doc's "edit or cancel only without approved passengers" is read as applying to *edit*, because `cancel_ride` explicitly notifies approved passengers.
 
 **Requests**
@@ -107,6 +109,7 @@ pending ──ride started / stale──▶ rejected
 - Password and email changes happen in Clerk. Webhook `user.updated` updates `users.email`. Webhook `user.deleted` sets `is_active=false` and closes the user's sockets. Their rides and ratings stay for history.
 - Admin deactivate → `is_active=false` + ban the user through Clerk's Backend API (`CLERK_SECRET_KEY`), which ends their sessions. Reactivate → unban. If the Clerk call fails, the DB change still applies (it's enforced anyway) and the failure is logged.
 - `last_login_at` is updated on an authenticated request when it's older than 1 hour. It feeds `active_users` in analytics.
+- `phone` is optional and unverified, but wherever it is written — onboarding and `PATCH /users/me` alike — it must match the shared `Phone` format in `openapi.yaml`. One schema, so the two can't drift apart again.
 - `preferences` read → the server fills defaults for missing keys (`UserPreferences`). Writes use `UserPreferencesPatch`, which carries no defaults: `PATCH` and onboarding shallow-merge what is sent (the `notifications` sub-object is merged too), an absent key is left alone, and `default_mode: null` clears it. Booleans must be real JSON booleans — `"yes"` is a 422.
 
 ## 5. Error codes
@@ -182,7 +185,7 @@ Let `R = SEARCH_RADIUS_KM`, `p = haversine(passenger start, ride start)`, `d = h
 
 `match_score` = the sum, rounded to 1 decimal. Keep only `≥ MATCH_MIN_SCORE` (40). Sort: `best_match` = score desc, then departure asc; `earliest` = departure asc; `cheapest` = price asc, then score desc. Earth radius = 6371 km.
 
-## 8. Decisions (all approved 2026-09-30)
+## 8. Decisions (D1–D15 approved 2026-09-30; later rows carry their own date)
 
 | # | Decision | Why |
 |---|---|---|
@@ -201,6 +204,8 @@ Let `R = SEARCH_RADIUS_KM`, `p = haversine(passenger start, ride start)`, `d = h
 | D13 | Tests sign their own tokens with a local key via `CLERK_JWT_KEY` | Tests run offline and fast, with no auth bypass in the code |
 | D14 | Vehicle info in v1 (`users.vehicle`); plate only visible to the driver and approved passengers | Passengers need to find the car; the plate is private |
 | D15 | Approved passengers can cancel until 1h before departure | Plans change; the cutoff protects the driver from last-minute no-shows |
+| D16 | **Ride preferences on `PATCH` shallow-merge**, absent keys left alone — same rule as user preferences (2026-10-01) | Asked by @frontend: the Edit Ride form has to know whether a partial object wipes the rest. One merge rule for both kinds of preferences is less to remember |
+| D17 | **The `Phone` format applies to `PATCH /users/me`, not just onboarding** (2026-10-01). Breaking: a loose phone that used to be accepted is now 422 | @tests and @frontend both flagged the inconsistency. One `Phone` schema is now shared by both request bodies so they can't drift |
 
 ## 9. Scope — what's in v1 and what's later (decided 2026-09-30)
 
