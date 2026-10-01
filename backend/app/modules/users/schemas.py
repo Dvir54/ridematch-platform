@@ -25,9 +25,8 @@ class Mode(StrEnum):
 
 Theme = Literal["light", "dark", "system"]
 Name = Annotated[str, Field(min_length=1, max_length=100)]
-#: Onboarding constrains the format; `UserUpdate` only the length — as openapi.yaml does.
-OnboardingPhone = Annotated[str, Field(max_length=20, pattern=PHONE_PATTERN)]
-Phone = Annotated[str, Field(max_length=20)]
+#: One format for every write path — openapi.yaml #/components/schemas/Phone (CONTRACT.md D17).
+Phone = Annotated[str, Field(max_length=20, pattern=PHONE_PATTERN)]
 
 
 class NotificationPrefs(BaseModel):
@@ -99,7 +98,7 @@ def _vehicle_public(value: Any) -> Any:
 
 class OnboardingRequest(BaseModel):
     name: Name
-    phone: OnboardingPhone | None = None
+    phone: Phone | None = None
     date_of_birth: date
     gender: Gender | None = None
     preferences: UserPreferencesPatch | None = None

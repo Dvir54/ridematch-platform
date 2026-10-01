@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: RideMatch API
-  version: 0.3.2
+  version: 0.4.0
   description: |
     Contract for the RideMatch monolith (FastAPI). Source of truth for backend, frontend and tests.
     See CONTRACT.md for conventions, state machines, business rules, error codes and the WebSocket protocol.
@@ -928,6 +928,14 @@ components:
       pattern: '^\d{1,8}(\.\d{1,2})?$'
       description: Decimal as string, e.g. "25.50" (never a float)
       examples: ["25.50"]
+    Phone:
+      type: string
+      maxLength: 20
+      pattern: '^\+?[0-9 \-]{7,20}$'
+      description: |
+        Unverified profile field (SMS verification is out of scope for v1). The same format applies
+        wherever a phone is written — onboarding and PATCH /users/me alike.
+      examples: ["+972 50-123-4567"]
     Gender:
       type: string
       enum: [male, female, other, prefer_not_to_say]
@@ -965,9 +973,9 @@ components:
       properties:
         name: { type: string, minLength: 1, maxLength: 100 }
         phone:
-          type: [string, "null"]
-          maxLength: 20
-          pattern: '^\+?[0-9 \-]{7,20}$'
+          oneOf:
+            - { $ref: "#/components/schemas/Phone" }
+            - { type: "null" }
         date_of_birth:
           type: string
           format: date
@@ -1115,7 +1123,10 @@ components:
       description: Email and password are changed in Clerk (UserProfile component), not here. is_admin/is_active are admin-only.
       properties:
         name: { type: string, minLength: 1, maxLength: 100 }
-        phone: { type: [string, "null"], maxLength: 20 }
+        phone:
+          oneOf:
+            - { $ref: "#/components/schemas/Phone" }
+            - { type: "null" }
         gender:
           oneOf:
             - { $ref: "#/components/schemas/Gender" }
@@ -1158,6 +1169,19 @@ components:
           type: boolean
           default: false
           description: true = only passengers of the driver's gender (hard filter in matching)
+    RidePreferencesPatch:
+      type: object
+      description: |
+        Write shape for RidePreferences, used by POST /rides and PATCH /rides/{ride_id}. No
+        defaults: on create the server fills them, and on PATCH an absent key is left alone —
+        a shallow merge of all four keys, exactly like user preferences (CONTRACT.md §4 Rides).
+      properties:
+        smoking: { type: boolean, description: "true = smoking allowed" }
+        pets: { type: boolean, description: "true = pets allowed" }
+        music: { type: boolean }
+        gender_only:
+          type: boolean
+          description: true = only passengers of the driver's gender (hard filter in matching)
     RideCreate:
       type: object
       required:
@@ -1175,7 +1199,7 @@ components:
           description: Must be in the future (422 DEPARTURE_IN_PAST)
         capacity: { type: integer, minimum: 1, maximum: 8 }
         price_per_seat: { $ref: "#/components/schemas/Money" }
-        preferences: { $ref: "#/components/schemas/RidePreferences" }
+        preferences: { $ref: "#/components/schemas/RidePreferencesPatch" }
         notes: { type: [string, "null"], maxLength: 1000 }
     RideUpdate:
       type: object
@@ -1190,7 +1214,7 @@ components:
         departure_time: { type: string, format: date-time }
         capacity: { type: integer, minimum: 1, maximum: 8 }
         price_per_seat: { $ref: "#/components/schemas/Money" }
-        preferences: { $ref: "#/components/schemas/RidePreferences" }
+        preferences: { $ref: "#/components/schemas/RidePreferencesPatch" }
         notes: { type: [string, "null"], maxLength: 1000 }
     Ride:
       type: object
