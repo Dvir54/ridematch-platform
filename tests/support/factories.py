@@ -20,21 +20,27 @@ from .keys import TokenSigner, auth_header
 DEFAULT_AGE = 30
 DEFAULT_VEHICLE = {"make": "Toyota", "model": "Corolla", "color": "White", "plate": "12-345-67"}
 
-# openapi.yaml Phone (0.4.0, D17): maxLength 20, pattern ^\+?[0-9 \-]{7,20}$.
-# One primitive backs both OnboardingRequest.phone and UserUpdate.phone, so both
-# paths are held to the same list here - that is what stops the two drifting.
+# openapi.yaml Phone (0.4.1, D17 + D18): maxLength 20, pattern
+# ^\+?[0-9 ().\-]{7,20}$. One primitive backs both OnboardingRequest.phone and
+# UserUpdate.phone, so both paths are held to the same lists here - that is what
+# stops the two drifting.
 VALID_PHONES = (
     "050-123-4567",
     "+972 50-123-4567",
     "1234567",
     "+1 555 010 9999",
+    # D18 widened the set to allow parentheses and dots.
+    "+1 (555) 010-9999",
+    "+1.555.0199",
+    "(02) 123-4567",
 )
 INVALID_PHONES = {
     "letters": "call me",
     "alphanumeric": "abc",
     "too-short": "12345",
-    "parenthesised": "+1 (555) 010-9999",
     "at-sign": "555@0101234",
+    "semicolon": "+1;5550199",
+    "slash": "+1/555-0199",
     "too-long": "+" + "1" * 21,
     "empty": "",
 }
