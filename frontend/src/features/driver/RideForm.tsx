@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { messageFor } from '../../api/errors'
+import { isApiError, messageFor } from '../../api/errors'
 import type { Ride, RideCreate, RidePreferences, RideUpdate } from '../../api/types'
 import { useCurrentUser } from '../../auth/currentUserContext'
 import { AddressField } from '../../components/AddressField'
@@ -195,10 +195,18 @@ export function RideForm({
   }
 
   const genderOnlyWithoutGender = values.preferences.gender_only && !me.gender
+  // A 422 that names the whole body rather than a field cannot highlight an input,
+  // so its own words go next to the summary instead of being dropped.
+  const bodyProblem = isApiError(error) ? error.formError() : undefined
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-6">
-      {error ? <ErrorNotice>{messageFor(error)}</ErrorNotice> : null}
+      {error ? (
+        <ErrorNotice>
+          {messageFor(error)}
+          {bodyProblem ? ` ${bodyProblem}` : null}
+        </ErrorNotice>
+      ) : null}
 
       {routeLocked && ride ? (
         <section className="rounded-card border border-hairline bg-surface p-4">

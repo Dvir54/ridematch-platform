@@ -185,3 +185,59 @@ describe('mock API refuses what the ride loop forbids', () => {
     )
   })
 })
+
+/**
+ * Order and precedence, as @tests pinned them on the real backend. A mock that
+ * answers a different code for the same request is worse than no mock: the screen
+ * would be built against a message the user never sees.
+ */
+describe('mock API refuses in the same order the backend does', () => {
+  const conflict = async (call: Promise<unknown>) =>
+    ((await call.catch((caught: unknown) => caught)) as ApiError).code
+
+  it('answers NOT_ENOUGH_SEATS, not REQUEST_ALREADY_EXISTS, when both are true', async () => {
+    const me = seedOnboardedMe()
+    const ride = seedRide({ driver_id: 2, capacity: 2, available_seats: 2 })
+    seedRequest({ ride_id: ride.id, passenger_id: me.id, status: 'pending' })
+
+    expect(await conflict(api.post(`/rides/${ride.id}/requests`, { seats_requested: 3 }))).toBe(
+      'NOT_ENOUGH_SEATS',
+    )
+  })
+
+  it('answers RIDE_NOT_OPEN, not NOT_ENOUGH_SEATS, on a full ride', async () => {
+    seedOnboardedMe()
+    const ride = seedRide({ driver_id: 2, capacity: 1, available_seats: 0, status: 'full' })
+
+    expect(await conflict(api.post(`/rides/${ride.id}/requests`, { seats_requested: 1 }))).toBe(
+      'RIDE_NOT_OPEN',
+    )
+  })
+
+  it('answers INVALID_STATE_TRANSITION once the ride has started, hour or no hour', async () => {
+    const me = seedOnboardedMe()
+    // in_progress is reachable from departure − 2h, so there is an hour in which the
+    // ride has left but the one-hour cancel cutoff has not passed yet (D19).
+    const ride = seedRide({
+      driver_id: 2,
+      status: 'in_progress',
+      departure_time: new Date(Date.now() + 90 * 60_000).toISOString(),
+    })
+    const seat = seedRequest({ ride_id: ride.id, passenger_id: me.id, status: 'approved' })
+
+    expect(await conflict(api.post(`/requests/${seat.id}/cancel`))).toBe(
+      'INVALID_STATE_TRANSITION',
+    )
+  })
+
+  it('still answers TOO_LATE_TO_CANCEL inside the hour on a ride that has not started', async () => {
+    const me = seedOnboardedMe()
+    const ride = seedRide({
+      driver_id: 2,
+      departure_time: new Date(Date.now() + 30 * 60_000).toISOString(),
+    })
+    const seat = seedRequest({ ride_id: ride.id, passenger_id: me.id, status: 'approved' })
+
+    expect(await conflict(api.post(`/requests/${seat.id}/cancel`))).toBe('TOO_LATE_TO_CANCEL')
+  })
+})

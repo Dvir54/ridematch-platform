@@ -42,6 +42,15 @@ export const requestHandlers = [
       return conflict('RIDE_NOT_OPEN', `This ride is ${ride.status}.`)
     }
 
+    // The order matters and @tests pinned it on the real backend: own ride, ride
+    // not open, seats, active request, previously rejected. So a passenger who
+    // both over-asks and already has a request gets NOT_ENOUGH_SEATS.
+    const body = ((await request.json()) ?? {}) as RideRequestCreate
+    const seats = body.seats_requested ?? 1
+    if (seats > ride.available_seats) {
+      return conflict('NOT_ENOUGH_SEATS', `Only ${ride.available_seats} seats are left.`)
+    }
+
     const mine = db.requests.filter(
       (row) => row.ride_id === ride.id && row.passenger_id === me.id,
     )
@@ -51,12 +60,6 @@ export const requestHandlers = [
     // A driver's rejection is final for this ride; the passenger's own cancel is not (D2).
     if (mine.some((row) => row.status === 'rejected')) {
       return conflict('PREVIOUSLY_REJECTED', 'The driver already turned down this request.')
-    }
-
-    const body = ((await request.json()) ?? {}) as RideRequestCreate
-    const seats = body.seats_requested ?? 1
-    if (seats > ride.available_seats) {
-      return conflict('NOT_ENOUGH_SEATS', `Only ${ride.available_seats} seats are left.`)
     }
 
     const row: RequestRow = {
@@ -174,17 +177,18 @@ export const requestHandlers = [
     if (!ride) return notFound('ride')
     if (row.passenger_id !== me.id) return forbidden()
 
-    if (row.status === 'pending') {
-      if (ride.status !== 'upcoming' && ride.status !== 'full') {
-        return conflict('INVALID_STATE_TRANSITION', `This ride is ${ride.status}.`)
-      }
-    } else if (row.status === 'approved') {
-      // Approved seats lock an hour before departure (D15).
-      if (!canCancelApprovedYet(ride.departure_time)) {
-        return conflict('TOO_LATE_TO_CANCEL', 'Approved seats lock an hour before departure.')
-      }
-    } else {
+    if (row.status !== 'pending' && row.status !== 'approved') {
       return conflict('INVALID_STATE_TRANSITION', `This request is already ${row.status}.`)
+    }
+    // A started ride closes cancelling for both kinds of request, and it wins over
+    // the one-hour rule: a ride may be in_progress from departure − 2h, so there is
+    // an hour where the cutoff has not passed but the ride has already left (D19).
+    if (ride.status !== 'upcoming' && ride.status !== 'full') {
+      return conflict('INVALID_STATE_TRANSITION', `This ride is ${ride.status}.`)
+    }
+    // Approved seats lock an hour before departure (D15).
+    if (row.status === 'approved' && !canCancelApprovedYet(ride.departure_time)) {
+      return conflict('TOO_LATE_TO_CANCEL', 'Approved seats lock an hour before departure.')
     }
 
     row.status = 'cancelled'

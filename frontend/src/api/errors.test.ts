@@ -62,3 +62,28 @@ describe('error messages', () => {
     expect(validation.fieldError('capacity')).toBeUndefined()
   })
 })
+
+describe('a 422 that names no field', () => {
+  const bodyLevel = new ApiError(422, {
+    code: 'VALIDATION_ERROR',
+    message: 'Request failed validation.',
+    details: [{ field: 'body', message: 'notes is the only field that may be null.' }],
+  })
+
+  it('is readable as a form-level problem', () => {
+    // PATCH /rides/{id} answers `field: "body"` where POST /rides names the field,
+    // so a form mapping details to inputs alone would drop the reason (found by @tests).
+    expect(bodyLevel.formError()).toBe('notes is the only field that may be null.')
+    expect(bodyLevel.fieldError('notes')).toBeUndefined()
+  })
+
+  it('is not confused with a real field error', () => {
+    const fieldLevel = new ApiError(422, {
+      code: 'VALIDATION_ERROR',
+      message: 'Request failed validation.',
+      details: [{ field: 'body.capacity', message: 'Must be at least 1.' }],
+    })
+    expect(fieldLevel.formError()).toBeUndefined()
+    expect(fieldLevel.fieldError('capacity')).toBe('Must be at least 1.')
+  })
+})
