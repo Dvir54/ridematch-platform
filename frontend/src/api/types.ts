@@ -25,8 +25,17 @@ export type NotificationPrefs = Schemas['NotificationPrefs']
 /** The write shape: every key optional, because PATCH shallow-merges (CONTRACT §4). */
 export type UserPreferencesPatch = Schemas['UserPreferencesPatch']
 export type Vehicle = Schemas['Vehicle']
+export type VehiclePublic = Schemas['VehiclePublic']
 export type OnboardingRequest = Schemas['OnboardingRequest']
 
 export type Ride = Schemas['Ride']
+export type RideCreate = Schemas['RideCreate']
+export type RideUpdate = Schemas['RideUpdate']
+export type RidePreferences = Schemas['RidePreferences']
+/** Ride preferences shallow-merge on PATCH too, so writes carry no defaults (D16). */
+export type RidePreferencesPatch = Schemas['RidePreferencesPatch']
+
 export type RideRequest = Schemas['RideRequest']
+export type RideRequestCreate = Schemas['RideRequestCreate']
+
 export type Notification = Schemas['Notification']

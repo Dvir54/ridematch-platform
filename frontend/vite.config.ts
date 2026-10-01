@@ -14,5 +14,8 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     css: true,
     restoreMocks: true,
+    // Address autocomplete is only rendered when a token exists, so the suite
+    // pins its own instead of depending on whatever the local .env holds.
+    env: { VITE_MAPBOX_TOKEN: 'pk.test-token' },
   },
 })
