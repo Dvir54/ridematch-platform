@@ -9,6 +9,7 @@ from __future__ import annotations
 import pytest
 
 from support.assertions import expect_error, expect_status, expect_validation_error
+from support.factories import INVALID_PHONES, VALID_PHONES
 
 ME = "/users/me"
 DEFAULT_NOTIFICATIONS = {"email": True, "push": True, "websocket": True}
@@ -75,6 +76,36 @@ class TestPatchProfileFields:
             await client.patch(ME, json={"name": "Changed"}, headers=user.headers), 200
         )
         assert body["gender"] == "male"
+
+
+class TestPatchPhone:
+    """D17 / contract 0.4.0: PATCH enforces the same Phone format onboarding does."""
+
+    @pytest.mark.parametrize("phone", VALID_PHONES)
+    async def test_accepted_formats(self, client, user, phone: str) -> None:
+        response = await client.patch(ME, json={"phone": phone}, headers=user.headers)
+        assert expect_status(response, 200)["phone"] == phone
+
+    @pytest.mark.parametrize("phone", list(INVALID_PHONES.values()), ids=list(INVALID_PHONES))
+    async def test_rejected_formats(self, client, user, phone: str) -> None:
+        response = await client.patch(ME, json={"phone": phone}, headers=user.headers)
+        expect_validation_error(response, field="phone")
+
+    async def test_a_rejected_phone_leaves_the_old_one_alone(self, client, users) -> None:
+        user = await users.create(phone="050-123-4567")
+        await client.patch(ME, json={"phone": "call me"}, headers=user.headers)
+        body = expect_status(await client.get(ME, headers=user.headers), 200)
+        assert body["phone"] == "050-123-4567"
+
+    async def test_null_still_clears(self, client, users) -> None:
+        user = await users.create(phone="050-123-4567")
+        response = await client.patch(ME, json={"phone": None}, headers=user.headers)
+        assert expect_status(response, 200)["phone"] is None
+
+    async def test_omitting_the_key_leaves_it_alone(self, client, users) -> None:
+        user = await users.create(phone="050-123-4567")
+        response = await client.patch(ME, json={"name": "Dana"}, headers=user.headers)
+        assert expect_status(response, 200)["phone"] == "050-123-4567"
 
 
 class TestPatchPreferences:

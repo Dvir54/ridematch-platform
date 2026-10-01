@@ -7,9 +7,17 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+import pytest
+
 from support import clock, env
 from support.assertions import expect_error, expect_status, expect_validation_error
-from support.factories import DEFAULT_VEHICLE, OMIT, onboarding_payload
+from support.factories import (
+    DEFAULT_VEHICLE,
+    INVALID_PHONES,
+    OMIT,
+    VALID_PHONES,
+    onboarding_payload,
+)
 from support.keys import auth_header
 
 ONBOARDING = "/users/me/onboarding"
@@ -171,8 +179,14 @@ class TestBodyValidation:
     async def test_invalid_gender(self, client, users) -> None:
         expect_validation_error(await users.onboard_response(gender="spaceship"), field="gender")
 
-    async def test_malformed_phone(self, client, users) -> None:
-        expect_validation_error(await users.onboard_response(phone="call me"), field="phone")
+    @pytest.mark.parametrize("phone", list(INVALID_PHONES.values()), ids=list(INVALID_PHONES))
+    async def test_malformed_phone(self, client, users, phone: str) -> None:
+        """The same Phone primitive as PATCH /users/me - one list, no drift."""
+        expect_validation_error(await users.onboard_response(phone=phone), field="phone")
+
+    @pytest.mark.parametrize("phone", VALID_PHONES)
+    async def test_accepted_phone(self, client, users, phone: str) -> None:
+        assert expect_status(await users.onboard_response(phone=phone), 201)["phone"] == phone
 
     async def test_invalid_preference_value(self, client, users) -> None:
         response = await users.onboard_response(preferences={"theme": "neon"})
