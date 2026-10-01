@@ -8,7 +8,9 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, 
 
 from app.schemas import ApiModel, UtcDatetime
 
-PHONE_PATTERN = r"^\+?[0-9 \-]{7,20}$"
+#: openapi.yaml #/components/schemas/Phone — digits, spaces, hyphens, parentheses, dots and
+#: an optional leading `+` (CONTRACT.md D17, widened by D18).
+PHONE_PATTERN = r"^\+?[0-9 ().\-]{7,20}$"
 
 
 class Gender(StrEnum):

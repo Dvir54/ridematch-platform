@@ -109,7 +109,7 @@ pending ──ride started / stale──▶ rejected
 - Password and email changes happen in Clerk. Webhook `user.updated` updates `users.email`. Webhook `user.deleted` sets `is_active=false` and closes the user's sockets. Their rides and ratings stay for history.
 - Admin deactivate → `is_active=false` + ban the user through Clerk's Backend API (`CLERK_SECRET_KEY`), which ends their sessions. Reactivate → unban. If the Clerk call fails, the DB change still applies (it's enforced anyway) and the failure is logged.
 - `last_login_at` is updated on an authenticated request when it's older than 1 hour. It feeds `active_users` in analytics.
-- `phone` is optional and unverified, but wherever it is written — onboarding and `PATCH /users/me` alike — it must match the shared `Phone` format in `openapi.yaml`. One schema, so the two can't drift apart again.
+- `phone` is optional and unverified, but wherever it is written — onboarding and `PATCH /users/me` alike — it must match the shared `Phone` format in `openapi.yaml`: digits, spaces, hyphens, parentheses, dots and an optional leading `+`, 7–20 characters after the `+`. So `+1 (555) 010-9999` and `+1.555.0199` are accepted as typed, while `""`, `abc` and `12345` are 422. One schema, so the two write paths can't drift apart again.
 - `preferences` read → the server fills defaults for missing keys (`UserPreferences`). Writes use `UserPreferencesPatch`, which carries no defaults: `PATCH` and onboarding shallow-merge what is sent (the `notifications` sub-object is merged too), an absent key is left alone, and `default_mode: null` clears it. Booleans must be real JSON booleans — `"yes"` is a 422.
 
 ## 5. Error codes
@@ -206,6 +206,7 @@ Let `R = SEARCH_RADIUS_KM`, `p = haversine(passenger start, ride start)`, `d = h
 | D15 | Approved passengers can cancel until 1h before departure | Plans change; the cutoff protects the driver from last-minute no-shows |
 | D16 | **Ride preferences on `PATCH` shallow-merge**, absent keys left alone — same rule as user preferences (2026-10-01) | Asked by @frontend: the Edit Ride form has to know whether a partial object wipes the rest. One merge rule for both kinds of preferences is less to remember |
 | D17 | **The `Phone` format applies to `PATCH /users/me`, not just onboarding** (2026-10-01). Breaking: a loose phone that used to be accepted is now 422 | @tests and @frontend both flagged the inconsistency. One `Phone` schema is now shared by both request bodies so they can't drift |
+| D18 | **`Phone` widened to allow parentheses and dots** (2026-10-01), so `+1 (555) 010-9999` is valid. Additive — nothing that was accepted became invalid | @tests and @frontend independently called parenthesised numbers a natural thing to type. Cheaper to widen before the profile editor is built against the strict rule |
 
 ## 9. Scope — what's in v1 and what's later (decided 2026-09-30)
 
