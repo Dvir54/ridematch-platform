@@ -4,9 +4,9 @@ from datetime import date
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
 
-from app.schemas import ApiModel, UtcDatetime
+from app.schemas import ApiModel, NotNull, UtcDatetime
 
 #: openapi.yaml #/components/schemas/Phone — digits, spaces, hyphens, parentheses, dots and
 #: an optional leading `+` (CONTRACT.md D17, widened by D18).
@@ -56,18 +56,20 @@ class NotificationPrefsPatch(BaseModel):
     coercing a stored oddity beats turning a read into a 500.
     """
 
-    email: StrictBool | None = None
-    push: StrictBool | None = None
-    websocket: StrictBool | None = None
+    email: NotNull[StrictBool] = None
+    push: NotNull[StrictBool] = None
+    websocket: NotNull[StrictBool] = None
 
 
 class UserPreferencesPatch(BaseModel):
+    """`default_mode` is the one key openapi.yaml marks nullable — `null` genuinely clears it."""
+
     default_mode: Mode | None = None
-    smoking: StrictBool | None = None
-    pets: StrictBool | None = None
-    notifications: NotificationPrefsPatch | None = None
-    language: str | None = None
-    theme: Theme | None = None
+    smoking: NotNull[StrictBool] = None
+    pets: NotNull[StrictBool] = None
+    notifications: NotNull[NotificationPrefsPatch] = None
+    language: NotNull[str] = None
+    theme: NotNull[Theme] = None
 
 
 class Vehicle(BaseModel):
@@ -103,7 +105,7 @@ class OnboardingRequest(BaseModel):
     phone: Phone | None = None
     date_of_birth: date
     gender: Gender | None = None
-    preferences: UserPreferencesPatch | None = None
+    preferences: NotNull[UserPreferencesPatch] = None
     vehicle: Vehicle | None = None
     # `false` is enforced in the service so the failure carries TERMS_NOT_ACCEPTED rather than
     # VALIDATION_ERROR; a non-boolean is a plain shape error.
@@ -111,18 +113,14 @@ class OnboardingRequest(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    name: Name | None = None
+    """`phone`, `gender` and `vehicle` are the nullable ones in openapi.yaml; the rest are not."""
+
+    name: NotNull[Name] = None
     phone: Phone | None = None
     gender: Gender | None = None
-    preferences: UserPreferencesPatch | None = None
+    preferences: NotNull[UserPreferencesPatch] = None
     #: Full replace; null removes it (409 VEHICLE_REQUIRED while the user has open rides).
     vehicle: Vehicle | None = None
-
-    @model_validator(mode="after")
-    def _reject_null_name(self) -> "UserUpdate":
-        if "name" in self.model_fields_set and self.name is None:
-            raise ValueError("name may not be null")
-        return self
 
 
 class UserMe(ApiModel):

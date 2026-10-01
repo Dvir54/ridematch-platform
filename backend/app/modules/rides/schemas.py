@@ -2,11 +2,20 @@
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, StrictBool, field_validator, model_validator
+from pydantic import BaseModel, Field, StrictBool, field_validator
 
 from app.modules.rides.models import Ride
 from app.modules.users.schemas import UserPublic
-from app.schemas import ApiModel, InputDatetime, Latitude, Longitude, Money, UtcDatetime
+from app.schemas import (
+    ApiModel,
+    InputDatetime,
+    Latitude,
+    Longitude,
+    Money,
+    MoneyIn,
+    NotNull,
+    UtcDatetime,
+)
 
 RideStatus = Literal["upcoming", "full", "in_progress", "completed", "cancelled"]
 Address = Annotated[str, Field(min_length=1, max_length=255)]
@@ -42,10 +51,10 @@ class RidePreferencesPatch(BaseModel):
     `StrictBool`, because openapi.yaml says `type: boolean` — `"yes"` is a 422.
     """
 
-    smoking: StrictBool | None = None
-    pets: StrictBool | None = None
-    music: StrictBool | None = None
-    gender_only: StrictBool | None = None
+    smoking: NotNull[StrictBool] = None
+    pets: NotNull[StrictBool] = None
+    music: NotNull[StrictBool] = None
+    gender_only: NotNull[StrictBool] = None
 
 
 class RideCreate(BaseModel):
@@ -58,7 +67,7 @@ class RideCreate(BaseModel):
     #: Must be in the future; the service answers 422 DEPARTURE_IN_PAST.
     departure_time: InputDatetime
     capacity: Capacity
-    price_per_seat: Money
+    price_per_seat: MoneyIn
     preferences: RidePreferencesPatch | None = None
     notes: Notes | None = None
 
@@ -66,30 +75,20 @@ class RideCreate(BaseModel):
 class RideUpdate(BaseModel):
     """Every field optional; `PATCH /rides/{ride_id}` says which ones may change when."""
 
-    start_lat: Latitude | None = None
-    start_lng: Longitude | None = None
-    start_address: Address | None = None
-    end_lat: Latitude | None = None
-    end_lng: Longitude | None = None
-    end_address: Address | None = None
-    departure_time: InputDatetime | None = None
-    capacity: Capacity | None = None
-    price_per_seat: Money | None = None
-    preferences: RidePreferencesPatch | None = None
+    # `NotNull`, because openapi.yaml marks only `notes` as nullable: an explicit `null` on any
+    # of these is a 422 that names the field it came from.
+    start_lat: NotNull[Latitude] = None
+    start_lng: NotNull[Longitude] = None
+    start_address: NotNull[Address] = None
+    end_lat: NotNull[Latitude] = None
+    end_lng: NotNull[Longitude] = None
+    end_address: NotNull[Address] = None
+    departure_time: NotNull[InputDatetime] = None
+    capacity: NotNull[Capacity] = None
+    price_per_seat: NotNull[MoneyIn] = None
+    preferences: NotNull[RidePreferencesPatch] = None
     #: The only nullable field in openapi.yaml: `null` clears the notes.
     notes: Notes | None = None
-
-    @model_validator(mode="after")
-    def _reject_nulls(self) -> "RideUpdate":
-        """openapi.yaml marks only `notes` as nullable, so an explicit `null` elsewhere is a 422."""
-        nulled = [
-            field
-            for field in self.model_fields_set
-            if field != "notes" and getattr(self, field) is None
-        ]
-        if nulled:
-            raise ValueError(f"may not be null: {', '.join(sorted(nulled))}")
-        return self
 
 
 class RideOut(ApiModel):

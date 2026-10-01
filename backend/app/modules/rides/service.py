@@ -43,8 +43,8 @@ def merge_preferences(stored: dict | None, patch: RidePreferencesPatch | None) -
     merged = RidePreferences().model_dump(mode="json")
     merged.update(stored or {})
     if patch is not None:
-        sent = patch.model_dump(mode="json", exclude_unset=True)
-        merged.update({key: value for key, value in sent.items() if value is not None})
+        # Every key is a non-nullable boolean, so what was sent is what should land.
+        merged.update(patch.model_dump(mode="json", exclude_unset=True))
     return merged
 
 
