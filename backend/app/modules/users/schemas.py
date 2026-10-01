@@ -1,0 +1,164 @@
+"""Pydantic mirrors of the user schemas in openapi.yaml."""
+
+from datetime import date
+from enum import StrEnum
+from typing import Annotated, Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.schemas import ApiModel, UtcDatetime
+
+PHONE_PATTERN = r"^\+?[0-9 \-]{7,20}$"
+
+
+class Gender(StrEnum):
+    male = "male"
+    female = "female"
+    other = "other"
+    prefer_not_to_say = "prefer_not_to_say"
+
+
+class Mode(StrEnum):
+    driver = "driver"
+    passenger = "passenger"
+
+
+Theme = Literal["light", "dark", "system"]
+Name = Annotated[str, Field(min_length=1, max_length=100)]
+#: Onboarding constrains the format; `UserUpdate` only the length — as openapi.yaml does.
+OnboardingPhone = Annotated[str, Field(max_length=20, pattern=PHONE_PATTERN)]
+Phone = Annotated[str, Field(max_length=20)]
+
+
+class NotificationPrefs(BaseModel):
+    """Defaults the server fills in on read."""
+
+    email: bool = True
+    push: bool = True
+    websocket: bool = True
+
+
+class UserPreferences(BaseModel):
+    default_mode: Mode | None = None
+    smoking: bool = False
+    pets: bool = False
+    notifications: NotificationPrefs = NotificationPrefs()
+    language: str = "en"
+    theme: Theme = "system"
+
+
+class NotificationPrefsPatch(BaseModel):
+    """Only the keys the client actually sent are merged (CONTRACT.md §4 Users)."""
+
+    email: bool | None = None
+    push: bool | None = None
+    websocket: bool | None = None
+
+
+class UserPreferencesPatch(BaseModel):
+    default_mode: Mode | None = None
+    smoking: bool | None = None
+    pets: bool | None = None
+    notifications: NotificationPrefsPatch | None = None
+    language: str | None = None
+    theme: Theme | None = None
+
+
+class Vehicle(BaseModel):
+    make: str = Field(min_length=1, max_length=50)
+    model: str = Field(min_length=1, max_length=50)
+    color: str = Field(min_length=1, max_length=30)
+    plate: str = Field(min_length=2, max_length=15)
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    @field_validator("plate")
+    @classmethod
+    def _upper(cls, value: str) -> str:
+        return value.upper()
+
+
+class VehiclePublic(BaseModel):
+    """The vehicle without the plate — what anyone may see (CONTRACT.md §4 Vehicles)."""
+
+    make: str
+    model: str
+    color: str
+
+
+def _vehicle_public(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: value.get(key) for key in ("make", "model", "color")}
+    return value
+
+
+class OnboardingRequest(BaseModel):
+    name: Name
+    phone: OnboardingPhone | None = None
+    date_of_birth: date
+    gender: Gender | None = None
+    preferences: UserPreferencesPatch | None = None
+    vehicle: Vehicle | None = None
+    # Enforced in the service so the failure carries code TERMS_NOT_ACCEPTED, not VALIDATION_ERROR.
+    accepted_terms: bool
+
+
+class UserUpdate(BaseModel):
+    name: Name | None = None
+    phone: Phone | None = None
+    gender: Gender | None = None
+    preferences: UserPreferencesPatch | None = None
+    #: Full replace; null removes it (409 VEHICLE_REQUIRED while the user has open rides).
+    vehicle: Vehicle | None = None
+
+    @model_validator(mode="after")
+    def _reject_null_name(self) -> "UserUpdate":
+        if "name" in self.model_fields_set and self.name is None:
+            raise ValueError("name may not be null")
+        return self
+
+
+class UserMe(ApiModel):
+    """The caller's own full profile (also used in admin views)."""
+
+    id: int
+    # Plain `str`: this mirrors the email Clerk already verified, so re-validating it
+    # on the way out could only turn good data into a 500.
+    email: str
+    name: str
+    phone: str | None = None
+    date_of_birth: date | None = None
+    gender: Gender | None = None
+    is_admin: bool
+    is_active: bool
+    driver_rating: float | None = None
+    driver_rating_count: int
+    passenger_rating: float | None = None
+    passenger_rating_count: int
+    preferences: UserPreferences
+    vehicle: Vehicle | None = None
+    created_at: UtcDatetime
+    last_login_at: UtcDatetime | None = None
+
+    @field_validator("preferences", mode="before")
+    @classmethod
+    def _fill_defaults(cls, value: Any) -> Any:
+        return value or {}
+
+
+class UserPublic(ApiModel):
+    """What other users may see. No email/phone/DOB."""
+
+    id: int
+    name: str
+    driver_rating: float | None = None
+    driver_rating_count: int
+    passenger_rating: float | None = None
+    passenger_rating_count: int
+    vehicle: VehiclePublic | None = None
+    created_at: UtcDatetime
+
+    @field_validator("vehicle", mode="before")
+    @classmethod
+    def _strip_plate(cls, value: Any) -> Any:
+        return _vehicle_public(value)
