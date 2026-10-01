@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: RideMatch API
-  version: 0.4.0
+  version: 0.4.1
   description: |
     Contract for the RideMatch monolith (FastAPI). Source of truth for backend, frontend and tests.
     See CONTRACT.md for conventions, state machines, business rules, error codes and the WebSocket protocol.
@@ -931,11 +931,13 @@ components:
     Phone:
       type: string
       maxLength: 20
-      pattern: '^\+?[0-9 \-]{7,20}$'
+      pattern: '^\+?[0-9 ().\-]{7,20}$'
       description: |
         Unverified profile field (SMS verification is out of scope for v1). The same format applies
         wherever a phone is written — onboarding and PATCH /users/me alike.
-      examples: ["+972 50-123-4567"]
+        Allowed: digits, spaces, hyphens, parentheses, dots, and an optional leading `+`.
+        7-20 characters after the `+`, so parenthesised and dotted formats are accepted as typed.
+      examples: ["+972 50-123-4567", "050-123-4567", "+1 (555) 010-9999", "+1.555.0199"]
     Gender:
       type: string
       enum: [male, female, other, prefer_not_to_say]
