@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import { env } from '../env'
 import { isAdult } from '../lib/dates'
-import { isValidPhone } from '../lib/phone'
+import { isValidPhone, PHONE_HINT } from '../lib/phone'
 import type {
   ApiErrorBody,
   OnboardingRequest,
@@ -30,7 +30,7 @@ const unauthenticated = () =>
 /** openapi.yaml shares one `Phone` primitive across onboarding and PATCH. */
 const badPhone = () =>
   fail(422, 'VALIDATION_ERROR', 'Request failed validation.', [
-    { field: 'body.phone', message: 'Use digits, spaces and hyphens, 7 to 20 characters.' },
+    { field: 'body.phone', message: PHONE_HINT },
   ])
 
 function toPublic(user: UserMe): UserPublic {

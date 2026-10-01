@@ -12,7 +12,7 @@ describe('mock API matches the contract', () => {
     const error = (await api
       .post('/users/me/onboarding', {
         name: 'Dvir Levi',
-        phone: '+1 (555) 010-9999',
+        phone: '555@0101234',
         date_of_birth: '1996-02-11',
         accepted_terms: true,
       })
@@ -26,7 +26,7 @@ describe('mock API matches the contract', () => {
     seedOnboardedMe()
 
     const error = (await api
-      .patch('/users/me', { phone: '+1 (555) 010-9999' })
+      .patch('/users/me', { phone: '555@0101234' })
       .catch((caught: unknown) => caught)) as ApiError
 
     expect(error.status).toBe(422)
@@ -38,6 +38,10 @@ describe('mock API matches the contract', () => {
 
     await expect(api.patch('/users/me', { phone: '+972 50-123-4567' })).resolves.toMatchObject({
       phone: '+972 50-123-4567',
+    })
+    // Brackets and dots are valid since 0.4.1, and are stored exactly as typed.
+    await expect(api.patch('/users/me', { phone: '+1 (555) 010-9999' })).resolves.toMatchObject({
+      phone: '+1 (555) 010-9999',
     })
     await expect(api.patch('/users/me', { phone: null })).resolves.toMatchObject({ phone: null })
   })
