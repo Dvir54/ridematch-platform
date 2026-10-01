@@ -62,7 +62,8 @@ export const handlers = [
     if (db.me) return fail(409, 'ALREADY_ONBOARDED', 'This profile already exists.')
 
     const body = (await request.json()) as OnboardingRequest
-    if (!body.accepted_terms) {
+    // The backend takes real JSON booleans only; a truthy string is a 422 there.
+    if (body.accepted_terms !== true) {
       return fail(422, 'TERMS_NOT_ACCEPTED', 'You must accept the terms of service.', [
         { field: 'body.accepted_terms', message: 'Acceptance is required.' },
       ])

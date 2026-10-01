@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../client'
 import { isApiError } from '../errors'
+import { sessionKey } from '../keys'
 import type { OnboardingRequest, UserMe, UserPatch } from '../types'
 
 /**
@@ -12,8 +13,6 @@ export type Session =
   | { status: 'ready'; user: UserMe }
   | { status: 'onboarding_required' }
   | { status: 'deactivated' }
-
-export const sessionKey = ['session'] as const
 
 async function fetchSession(): Promise<Session> {
   try {
