@@ -190,6 +190,12 @@ describe('mock API refuses what the ride loop forbids', () => {
  * Order and precedence, as @tests pinned them on the real backend. A mock that
  * answers a different code for the same request is worse than no mock: the screen
  * would be built against a message the user never sees.
+ *
+ * Each case below is also pinned on the backend side, so a change to either order
+ * turns both suites red instead of letting them drift apart quietly:
+ *   tests/api/test_requests.py::TestTheOrderOfRefusals
+ *   tests/api/test_request_lifecycle.py::TestRideStateBlocksResponses
+ *     ::test_an_approved_seat_on_a_started_ride_cannot_be_cancelled
  */
 describe('mock API refuses in the same order the backend does', () => {
   const conflict = async (call: Promise<unknown>) =>

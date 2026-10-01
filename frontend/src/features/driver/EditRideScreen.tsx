@@ -13,6 +13,13 @@ import { RideForm } from './RideForm'
 /**
  * Split out so the form mounts with the ride already in hand: its fields are
  * seeded once from the ride, not synced to it on every render.
+ *
+ * A rejected PATCH applies nothing — a body mixing a locked field with an editable
+ * one leaves both untouched — so a 409 leaves the form's values still true of the
+ * ride and there is nothing to re-fetch. That guarantee is load-bearing here and
+ * pinned on the backend side by
+ * tests/api/test_ride_edit.py::TestLockedByApprovedPassengers
+ *   ::test_the_locked_change_is_not_applied.
  */
 function EditForm({ ride }: { ride: Ride }) {
   const navigate = useNavigate()
