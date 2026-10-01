@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: RideMatch API
-  version: 0.4.2
+  version: 0.4.3
   description: |
     Contract for the RideMatch monolith (FastAPI). Source of truth for backend, frontend and tests.
     See CONTRACT.md for conventions, state machines, business rules, error codes and the WebSocket protocol.
@@ -138,6 +138,7 @@ paths:
               schema: { $ref: "#/components/schemas/UserMe" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }         # VEHICLE_REQUIRED
         "422": { $ref: "#/components/responses/ValidationError" }
 
   /users/me/stats:
@@ -935,7 +936,10 @@ components:
     Money:
       type: string
       pattern: '^\d{1,8}(\.\d{1,2})?$'
-      description: Decimal as string, e.g. "25.50" (never a float)
+      description: |
+        Decimal as string, e.g. "25.50" (never a float). Being a `string` is the point: a JSON
+        number in a request body is 422 VALIDATION_ERROR, whether or not it would round-trip.
+        1 or 2 decimal places on the way in, or none; always 2 on the way out.
       examples: ["25.50"]
     Phone:
       type: string
