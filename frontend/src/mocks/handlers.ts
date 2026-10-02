@@ -12,6 +12,7 @@ import type {
 import { db, defaultNotifications, defaultPreferences, findUser } from './db'
 import { conflict, fail, onboardingRequired, notFound, signedIn, unauthenticated } from './http'
 import { mapboxHandlers } from './mapboxHandlers'
+import { notificationHandlers } from './notificationHandlers'
 import { toPublic } from './project'
 import { requestHandlers } from './requestHandlers'
 import { rideHandlers } from './rideHandlers'
@@ -139,5 +140,6 @@ export const handlers = [
   ...rideHandlers,
   ...requestHandlers,
   ...searchHandlers,
+  ...notificationHandlers,
   ...mapboxHandlers,
 ]

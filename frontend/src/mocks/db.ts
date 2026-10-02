@@ -1,5 +1,7 @@
 import type {
+  Notification,
   NotificationPrefs,
+  NotificationType,
   RidePreferences,
   RideStatus,
   RequestStatus,
@@ -69,14 +71,28 @@ export interface RequestRow {
   responded_at: string | null
 }
 
+export interface NotificationRow {
+  id: number
+  recipient_id: number
+  type: NotificationType
+  title: string
+  message: string
+  related_entity_type: 'ride' | 'ride_request' | null
+  related_entity_id: number | null
+  is_read: boolean
+  created_at: string
+}
+
 export interface MockDb {
   /** null until onboarding completes, which is what drives ONBOARDING_REQUIRED. */
   me: UserMe | null
   users: UserMe[]
   rides: RideRow[]
   requests: RequestRow[]
+  notifications: NotificationRow[]
   nextRideId: number
   nextRequestId: number
+  nextNotificationId: number
 }
 
 function hoursFromNow(hours: number): string {
@@ -145,7 +161,16 @@ function seed(): MockDb {
     },
   ]
 
-  return { me: null, users: [driver, passenger], rides, requests: [], nextRideId: 102, nextRequestId: 1 }
+  return {
+    me: null,
+    users: [driver, passenger],
+    rides,
+    requests: [],
+    notifications: [],
+    nextRideId: 102,
+    nextRequestId: 1,
+    nextNotificationId: 1,
+  }
 }
 
 export let db: MockDb = seed()
@@ -231,6 +256,37 @@ export function seedRequest(overrides: Partial<RequestRow> = {}): RequestRow {
   }
   db.requests.push(row)
   return row
+}
+
+export function seedNotification(overrides: Partial<NotificationRow> = {}): NotificationRow {
+  const row: NotificationRow = {
+    id: overrides.id ?? db.nextNotificationId++,
+    recipient_id: db.me?.id ?? 1,
+    type: 'request_created',
+    title: 'New request',
+    message: 'Someone asked for a seat on your ride.',
+    related_entity_type: null,
+    related_entity_id: null,
+    is_read: false,
+    created_at: hoursFromNow(0),
+    ...overrides,
+  }
+  db.notifications.push(row)
+  return row
+}
+
+/** The `Notification` wire shape (CONTRACT openapi): no `recipient_id`. */
+export function toNotification(row: NotificationRow): Notification {
+  return {
+    id: row.id,
+    type: row.type,
+    title: row.title,
+    message: row.message,
+    related_entity_type: row.related_entity_type,
+    related_entity_id: row.related_entity_id,
+    is_read: row.is_read,
+    created_at: row.created_at,
+  }
 }
 
 /** Seats taken by approved requests — the invariant behind `available_seats`. */
