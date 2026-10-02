@@ -119,8 +119,15 @@ export const ratingHandlers = [
     if (!db.me) return onboardingRequired()
     const me = db.me
 
+    // @backend (0150a3c): completed rides from the last 30 days, newest
+    // departure first.
+    const THIRTY_DAYS_MS = 30 * 24 * 3_600_000
+    const cutoff = Date.now() - THIRTY_DAYS_MS
+
     const rows = db.rides
       .filter((ride) => ride.status === 'completed')
+      .filter((ride) => new Date(ride.departure_time).getTime() >= cutoff)
+      .sort((a, b) => b.departure_time.localeCompare(a.departure_time))
       .map((ride) => pendingRatingsFor(ride, me.id))
       .filter((row): row is PendingRating => row !== null)
 
