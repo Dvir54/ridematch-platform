@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../client'
 import { isApiError } from '../errors'
-import { sessionKey } from '../keys'
-import type { OnboardingRequest, UserMe, UserUpdate } from '../types'
+import { sessionKey, statsKey, userKeys } from '../keys'
+import type { OnboardingRequest, UserMe, UserPublic, UserStats, UserUpdate } from '../types'
 
 /**
  * `GET /users/me` answers three different things, and only one of them is a
@@ -51,5 +51,22 @@ export function useUpdateMe() {
       const session: Session = { status: 'ready', user }
       queryClient.setQueryData(sessionKey, session)
     },
+  })
+}
+
+/** Counters for the driver Home, passenger Home and Profile screens. */
+export function useMyStats() {
+  return useQuery({
+    queryKey: statsKey,
+    queryFn: ({ signal }) => api.get<UserStats>('/users/me/stats', undefined, signal),
+  })
+}
+
+/** A public profile — anyone's, including the caller's own (openapi: getUserPublic). */
+export function useUserPublic(userId: number | undefined) {
+  return useQuery({
+    queryKey: userKeys.detail(userId ?? 0),
+    queryFn: ({ signal }) => api.get<UserPublic>(`/users/${userId}`, undefined, signal),
+    enabled: userId !== undefined,
   })
 }

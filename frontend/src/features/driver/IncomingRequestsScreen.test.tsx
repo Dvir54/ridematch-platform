@@ -53,10 +53,14 @@ describe('the driver Requests tab', () => {
     await screen.findByText(/Allenby Street 40/)
     await screen.findByText(/Jaffa Street 97/)
 
-    const links = screen.getAllByRole('link')
-    expect(links).toHaveLength(2)
-    expect(within(links[0]).getByText(/Allenby Street 40/)).toBeVisible()
-    expect(within(links[1]).getByText(/Jaffa Street 97/)).toBeVisible()
+    // Each group has a link to its ride, and each passenger name is now also a
+    // link to their public profile — filter down to the ride links.
+    const rideLinks = screen
+      .getAllByRole('link')
+      .filter((link) => link.getAttribute('href')?.startsWith('/app/driver/rides/'))
+    expect(rideLinks).toHaveLength(2)
+    expect(within(rideLinks[0]).getByText(/Allenby Street 40/)).toBeVisible()
+    expect(within(rideLinks[1]).getByText(/Jaffa Street 97/)).toBeVisible()
   })
 
   it('approves from the tab and drops the request off the pending list', async () => {
@@ -100,7 +104,7 @@ describe('the driver Requests tab', () => {
     renderScreen(me)
 
     await screen.findByText('Omer Katz')
-    await user.click(screen.getByRole('link'))
+    await user.click(screen.getByRole('link', { name: new RegExp(ride.start_address.split(',')[0]) }))
     expect(await screen.findByText('The ride')).toBeVisible()
   })
 })

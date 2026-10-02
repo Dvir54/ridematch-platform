@@ -20,6 +20,8 @@ import { PassengerHomeScreen } from './features/passenger/PassengerHomeScreen'
 import { PassengerRideScreen } from './features/passenger/PassengerRideScreen'
 import { SearchScreen } from './features/passenger/SearchScreen'
 import { ProfileScreen } from './features/profile/ProfileScreen'
+import { PublicProfileScreen } from './features/profile/PublicProfileScreen'
+import { RateScreen } from './features/ratings/RateScreen'
 import { WelcomeScreen } from './features/welcome/WelcomeScreen'
 import { homePathFor, paths } from './routes'
 
@@ -72,6 +74,8 @@ export function App() {
 
                 <Route path="notifications" element={<NotificationsScreen />} />
                 <Route path="profile" element={<ProfileScreen />} />
+                <Route path="users/:userId" element={<PublicProfileScreen />} />
+                <Route path="rate/:rideId/:userId" element={<RateScreen />} />
               </Route>
             </Route>
           </Route>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { api } from '../api/client'
 import type { ApiError } from '../api/errors'
-import { seedOnboardedDriver, seedOnboardedMe, seedRequest, seedRide } from './db'
+import { db, seedOnboardedDriver, seedOnboardedMe, seedRating, seedRequest, seedRide } from './db'
 
 /**
  * The mock API only earns its keep if it refuses what the real backend refuses.
@@ -56,6 +56,55 @@ describe('mock API matches the contract', () => {
       .catch((caught: unknown) => caught)) as ApiError
 
     expect(error.code).toBe('TERMS_NOT_ACCEPTED')
+  })
+
+  it('refuses a rating before the ride is completed, and a duplicate after', async () => {
+    const me = seedOnboardedDriver()
+    const ride = seedRide({ driver_id: me.id, status: 'in_progress' })
+    seedRequest({ ride_id: ride.id, passenger_id: 3, status: 'approved' })
+
+    const early = (await api
+      .post('/ratings', { ride_id: ride.id, to_user_id: 3, score: 5 })
+      .catch((caught: unknown) => caught)) as ApiError
+    expect(early.code).toBe('RIDE_NOT_COMPLETED')
+
+    ride.status = 'completed'
+    await api.post('/ratings', { ride_id: ride.id, to_user_id: 3, score: 5 })
+
+    const duplicate = (await api
+      .post('/ratings', { ride_id: ride.id, to_user_id: 3, score: 4 })
+      .catch((caught: unknown) => caught)) as ApiError
+    expect(duplicate.code).toBe('ALREADY_RATED')
+  })
+
+  it('updates the cached average on the person just rated', async () => {
+    const me = seedOnboardedDriver()
+    const ride = seedRide({ driver_id: me.id, status: 'completed' })
+    seedRequest({ ride_id: ride.id, passenger_id: 3, status: 'approved' })
+    seedRating({ ride_id: 50, from_user_id: me.id, to_user_id: 3, role_rated: 'passenger', score: 4 })
+    db.users.find((u) => u.id === 3)!.passenger_rating = 4
+    db.users.find((u) => u.id === 3)!.passenger_rating_count = 1
+
+    await api.post('/ratings', { ride_id: ride.id, to_user_id: 3, score: 5 })
+
+    const passenger = db.users.find((u) => u.id === 3)
+    expect(passenger?.passenger_rating_count).toBe(2)
+    expect(passenger?.passenger_rating).toBe(4.5)
+  })
+
+  it('counts stats across both roles', async () => {
+    const me = seedOnboardedDriver()
+    const mine = seedRide({ driver_id: me.id, status: 'completed' })
+    seedRide({ driver_id: me.id, status: 'upcoming' })
+    const someoneElsesRide = seedRide({ driver_id: 2, status: 'completed' })
+    seedRequest({ ride_id: someoneElsesRide.id, passenger_id: me.id, status: 'approved' })
+    seedRequest({ ride_id: mine.id, passenger_id: 3, status: 'approved' })
+
+    const stats = await api.get('/users/me/stats')
+    expect(stats).toMatchObject({
+      as_driver: { rides_offered: 2, rides_completed: 1, upcoming_rides: 1, passengers_carried: 1 },
+      as_passenger: { trips_requested: 1, trips_completed: 1, upcoming_trips: 0 },
+    })
   })
 })
 

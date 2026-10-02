@@ -1,7 +1,13 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { db, seedOnboardedDriver, seedOnboardedMe, seedRide } from '../../mocks/db'
+import {
+  db,
+  seedOnboardedDriver,
+  seedOnboardedMe,
+  seedRequest,
+  seedRide,
+} from '../../mocks/db'
 import { renderAsUser } from '../../test/utils'
 import { ProfileScreen } from './ProfileScreen'
 
@@ -68,5 +74,26 @@ describe('the car on Profile', () => {
       await screen.findByText('Add your car to your profile before offering a ride.'),
     ).toBeVisible()
     expect(db.me?.vehicle).not.toBeNull()
+  })
+})
+
+describe('trip stats on Profile', () => {
+  it('counts both sides of the trip record', async () => {
+    const me = seedOnboardedDriver()
+    seedRide({ driver_id: me.id, status: 'completed' })
+    seedRide({ driver_id: me.id, status: 'upcoming' })
+    const someoneElsesRide = seedRide({ driver_id: 2, status: 'completed' })
+    seedRequest({ ride_id: someoneElsesRide.id, passenger_id: me.id, status: 'approved' })
+    renderAsUser(me, <ProfileScreen />)
+
+    const driverHeading = await screen.findByRole('heading', { name: 'As a driver', level: 3 })
+    const driverStats = driverHeading.closest('div') as HTMLElement
+    expect(driverStats).toHaveTextContent('2')
+    expect(driverStats).toHaveTextContent('Rides offered')
+
+    const passengerHeading = screen.getByRole('heading', { name: 'As a passenger', level: 3 })
+    const passengerStats = passengerHeading.closest('div') as HTMLElement
+    expect(passengerStats).toHaveTextContent('Trips requested')
+    expect(passengerStats).toHaveTextContent('1')
   })
 })
