@@ -1,15 +1,17 @@
 """Pydantic mirrors of the ride-request schemas in openapi.yaml."""
 
-from typing import Annotated, Literal
+from typing import TYPE_CHECKING, Annotated
 
 from pydantic import BaseModel, Field
 
 from app.modules.requests.models import RideRequest
 from app.modules.rides.schemas import RideOut, ride_out
 from app.modules.users.schemas import UserPublic
-from app.schemas import ApiModel, UtcDatetime
+from app.schemas import ApiModel, RequestStatus, UtcDatetime
 
-RequestStatus = Literal["pending", "approved", "rejected", "cancelled"]
+if TYPE_CHECKING:
+    from app.modules.rides.service import RideViewer
+
 Seats = Annotated[int, Field(ge=1, le=8)]
 
 
@@ -29,20 +31,12 @@ class RideRequestOut(ApiModel):
     responded_at: UtcDatetime | None = None
 
 
-def plate_visible(request: RideRequest, viewer_id: int) -> bool:
-    """The ride's driver always; the passenger only once approved (CONTRACT.md §4 Vehicles).
-
-    No query needed: the request itself says whether this viewer has an approved seat.
-    """
-    return viewer_id == request.ride.driver_id or (
-        viewer_id == request.passenger_id and request.status == "approved"
-    )
-
-
-def request_out(request: RideRequest, *, viewer_id: int) -> RideRequestOut:
+def request_out(request: RideRequest, viewer: "RideViewer") -> RideRequestOut:
+    """The embedded ride goes through the same viewer as a standalone one, so the plate rule and
+    `my_request` have one implementation rather than one per endpoint."""
     return RideRequestOut(
         id=request.id,
-        ride=ride_out(request.ride, show_plate=plate_visible(request, viewer_id)),
+        ride=ride_out(request.ride, viewer),
         passenger=UserPublic.model_validate(request.passenger),
         seats_requested=request.seats_requested,
         status=request.status,

@@ -5,20 +5,23 @@ ride is cancelled or started. The requests *service* is never called from here, 
 between the two modules still points one way.
 """
 
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.errors import Conflict, Forbidden, NotFound, UnprocessableEntity
 from app.modules.notifications import service as notifications_service
 from app.modules.notifications.service import EmailContent
-from app.modules.requests.models import RideRequest
+from app.modules.requests.models import BLOCKING_REQUEST_STATUSES, RideRequest
 from app.modules.rides.models import OPEN_RIDE_STATUSES, Ride
 from app.modules.rides.schemas import (
     LOCKED_FIELDS,
     PLAIN_FIELDS,
+    MyRequest,
     RideCreate,
     RidePreferences,
     RidePreferencesPatch,
@@ -100,22 +103,55 @@ async def count_open_rides_for_driver(db: AsyncSession, driver_id: int) -> int:
     return int((await db.execute(stmt)).scalar_one())
 
 
-async def has_approved_request(db: AsyncSession, ride_id: int, user_id: int) -> bool:
+@dataclass(frozen=True, slots=True)
+class RideViewer:
+    """Who is asking, and the per-ride facts that depend on them.
+
+    Both viewer-dependent fields on `Ride` come from the same place: the caller's own blocking
+    request. `my_request` *is* that request (CONTRACT.md D20), and an `approved` one is exactly
+    what reveals the plate (§4 Vehicles). So one query answers both, and the rule lives once.
+    """
+
+    user_id: int
+    my_requests: Mapping[int, MyRequest]
+
+    def my_request(self, ride: Ride) -> MyRequest | None:
+        return self.my_requests.get(ride.id)
+
+    def plate_visible(self, ride: Ride) -> bool:
+        if ride.driver_id == self.user_id:
+            return True
+        mine = self.my_requests.get(ride.id)
+        return mine is not None and mine.status == "approved"
+
+
+async def viewer_for(db: AsyncSession, rides: Sequence[Ride], user: User) -> RideViewer:
+    """Resolve one caller's view of these rides in a single query.
+
+    Call it once per response with every ride that response will serialize, embedded ones
+    included, so the cost is one query however long the list is.
+    """
+    ride_ids = {ride.id for ride in rides}
+    if not ride_ids:
+        return RideViewer(user_id=user.id, my_requests={})
+    # The partial unique index allows at most one row per (ride, passenger) in these statuses,
+    # so there is exactly one to report per ride and no "latest" to choose. Columns only, so
+    # this doesn't drag the relationships along.
     stmt = select(
-        exists().where(
-            RideRequest.ride_id == ride_id,
-            RideRequest.passenger_id == user_id,
-            RideRequest.status == "approved",
-        )
+        RideRequest.ride_id,
+        RideRequest.id,
+        RideRequest.status,
+        RideRequest.seats_requested,
+    ).where(
+        RideRequest.ride_id.in_(ride_ids),
+        RideRequest.passenger_id == user.id,
+        RideRequest.status.in_(BLOCKING_REQUEST_STATUSES),
     )
-    return bool((await db.execute(stmt)).scalar())
-
-
-async def plate_visible(db: AsyncSession, ride: Ride, viewer_id: int) -> bool:
-    """The plate is private to the driver and approved passengers (CONTRACT.md §4 Vehicles)."""
-    if viewer_id == ride.driver_id:
-        return True
-    return await has_approved_request(db, ride.id, viewer_id)
+    mine = {
+        ride_id: MyRequest(id=request_id, status=status, seats_requested=seats)
+        for ride_id, request_id, status, seats in (await db.execute(stmt)).all()
+    }
+    return RideViewer(user_id=user.id, my_requests=mine)
 
 
 async def list_my_rides(

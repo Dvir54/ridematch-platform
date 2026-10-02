@@ -1,6 +1,6 @@
 """Pydantic mirrors of the ride schemas in openapi.yaml."""
 
-from typing import Annotated, Any, Literal
+from typing import TYPE_CHECKING, Annotated, Any
 
 from pydantic import BaseModel, Field, StrictBool, field_validator
 
@@ -14,10 +14,14 @@ from app.schemas import (
     Money,
     MoneyIn,
     NotNull,
+    RequestStatus,
+    RideStatus,
     UtcDatetime,
 )
 
-RideStatus = Literal["upcoming", "full", "in_progress", "completed", "cancelled"]
+if TYPE_CHECKING:  # the viewer is built in service.py, which imports this module
+    from app.modules.rides.service import RideViewer
+
 Address = Annotated[str, Field(min_length=1, max_length=255)]
 Capacity = Annotated[int, Field(ge=1, le=8)]
 Notes = Annotated[str, Field(max_length=1000)]
@@ -68,7 +72,9 @@ class RideCreate(BaseModel):
     departure_time: InputDatetime
     capacity: Capacity
     price_per_seat: MoneyIn
-    preferences: RidePreferencesPatch | None = None
+    #: `NotNull` here as on `RideUpdate`: openapi.yaml marks `notes` as the one nullable field, and
+    #: the two write shapes have to answer a null the same way.
+    preferences: NotNull[RidePreferencesPatch] = None
     notes: Notes | None = None
 
 
@@ -91,6 +97,14 @@ class RideUpdate(BaseModel):
     notes: Notes | None = None
 
 
+class MyRequest(ApiModel):
+    """openapi.yaml #/components/schemas/MyRequest — what `Ride.my_request` carries."""
+
+    id: int
+    status: RequestStatus
+    seats_requested: int
+
+
 class RideOut(ApiModel):
     """openapi.yaml #/components/schemas/Ride."""
 
@@ -111,6 +125,8 @@ class RideOut(ApiModel):
     notes: str | None = None
     #: The driver's plate, for the driver and approved passengers only (CONTRACT.md §4 Vehicles).
     driver_vehicle_plate: str | None = None
+    #: The caller's own blocking request on this ride, or None (CONTRACT.md §4 Requests, D20).
+    my_request: MyRequest | None = None
     created_at: UtcDatetime
     updated_at: UtcDatetime
 
@@ -120,9 +136,10 @@ class RideOut(ApiModel):
         return value or {}
 
 
-def ride_out(ride: Ride, *, show_plate: bool) -> RideOut:
-    """`Ride` plus the plate, which only some viewers may see."""
+def ride_out(ride: Ride, viewer: "RideViewer") -> RideOut:
+    """`Ride` plus the two fields that depend on who is asking."""
     out = RideOut.model_validate(ride)
-    if show_plate:
+    if viewer.plate_visible(ride):
         out.driver_vehicle_plate = (ride.driver.vehicle or {}).get("plate")
+    out.my_request = viewer.my_request(ride)
     return out
