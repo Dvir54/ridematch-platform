@@ -195,6 +195,7 @@ async def _notify_ride_cancelled(
         message=f"The ride {describe_ride(ride)} was cancelled by the driver.",
         related_entity_type="ride",
         related_entity_id=ride.id,
+        push=notifications_service.websocket_enabled(request.passenger.preferences),
         now=now,
     )
 
@@ -223,6 +224,7 @@ async def _notify_auto_rejected(
         related_entity_type="ride_request",
         related_entity_id=request.id,
         email=email,
+        push=notifications_service.websocket_enabled(request.passenger.preferences),
         now=now,
     )
 
@@ -231,7 +233,7 @@ async def _notify_ride_event(
     db: AsyncSession,
     settings: Settings,
     ride: Ride,
-    user_id: int,
+    recipient: User,
     *,
     type: str,
     title: str,
@@ -241,12 +243,13 @@ async def _notify_ride_event(
     await notifications_service.notify(
         db,
         settings,
-        user_id=user_id,
+        user_id=recipient.id,
         type=type,
         title=title,
         message=message,
         related_entity_type="ride",
         related_entity_id=ride.id,
+        push=notifications_service.websocket_enabled(recipient.preferences),
         now=now,
     )
 
@@ -288,7 +291,7 @@ async def create_ride(db: AsyncSession, *, driver: User, data: RideCreate, now: 
         updated_at=now,
     )
     db.add(ride)
-    await db.commit()
+    await notifications_service.commit_and_push(db)
     return await get_ride_or_404(db, ride.id)
 
 
@@ -325,7 +328,7 @@ async def update_ride(
         ride.available_seats = data.capacity - approved_seats
         ride.status = "full" if ride.available_seats == 0 else "upcoming"
     ride.updated_at = now
-    await db.commit()
+    await notifications_service.commit_and_push(db)
     return ride
 
 
@@ -348,7 +351,7 @@ async def cancel_ride(
 
     for request in affected:
         await _notify_ride_cancelled(db, settings, ride, request, now)
-    await db.commit()
+    await notifications_service.commit_and_push(db)
     return ride
 
 
@@ -380,13 +383,13 @@ async def start_ride(
             db,
             settings,
             ride,
-            request.passenger_id,
+            request.passenger,
             type="ride_started",
             title="Ride started",
             message=f"Your ride {describe_ride(ride)} has started.",
             now=now,
         )
-    await db.commit()
+    await notifications_service.commit_and_push(db)
     return ride
 
 
@@ -403,16 +406,16 @@ async def complete_ride(
 
     approved = await _requests_in(db, ride.id, ("approved",))
     message = f"Your ride {describe_ride(ride)} is complete. Rate who you travelled with."
-    for user_id in [ride.driver_id, *(request.passenger_id for request in approved)]:
+    for recipient in [ride.driver, *(request.passenger for request in approved)]:
         await _notify_ride_event(
             db,
             settings,
             ride,
-            user_id,
+            recipient,
             type="ride_completed",
             title="Ride completed",
             message=message,
             now=now,
         )
-    await db.commit()
+    await notifications_service.commit_and_push(db)
     return ride
