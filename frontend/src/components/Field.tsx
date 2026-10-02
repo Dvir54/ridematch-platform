@@ -1,5 +1,10 @@
 import { useId } from 'react'
-import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react'
+import type {
+  InputHTMLAttributes,
+  ReactNode,
+  SelectHTMLAttributes,
+  TextareaHTMLAttributes,
+} from 'react'
 
 const control =
   'w-full rounded-card border bg-surface px-3 py-2.5 text-base placeholder:text-ink-45'
@@ -129,6 +134,80 @@ export function CheckboxField({ label, error, id, ...props }: CheckboxFieldProps
           {error}
         </p>
       ) : null}
+    </div>
+  )
+}
+
+export interface TextareaFieldProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
+  label: string
+  hint?: string
+  error?: string
+  optional?: boolean
+}
+
+export function TextareaField({
+  label,
+  hint,
+  error,
+  optional,
+  id,
+  ...props
+}: TextareaFieldProps) {
+  const generated = useId()
+  const fieldId = id ?? generated
+  return (
+    <Labelled id={fieldId} label={label} hint={hint} error={error} optional={optional}>
+      <textarea
+        {...props}
+        id={fieldId}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy(fieldId, hint, error)}
+        className={`${control} resize-y ${error ? 'border-alert' : 'border-hairline'}`}
+      />
+    </Labelled>
+  )
+}
+
+export interface SwitchFieldProps {
+  label: string
+  /** One line saying what turning it on means for the other person. */
+  description?: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+  disabled?: boolean
+}
+
+/**
+ * A ride preference. Phrased as a statement about the ride ("Smoking allowed"),
+ * because that is what the passenger reads on the other side.
+ */
+export function SwitchField({
+  label,
+  description,
+  checked,
+  onChange,
+  disabled,
+}: SwitchFieldProps) {
+  const id = useId()
+  return (
+    <div className="flex items-start justify-between gap-4 py-2.5">
+      <span className="flex flex-col">
+        <label htmlFor={id} className="text-sm font-semibold">
+          {label}
+        </label>
+        {description ? (
+          <span className="mt-0.5 max-w-[42ch] text-sm text-ink-70">{description}</span>
+        ) : null}
+      </span>
+      <input
+        id={id}
+        type="checkbox"
+        role="switch"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+        className="mt-1 size-4.5 shrink-0 accent-[var(--color-ink)] disabled:opacity-45"
+      />
     </div>
   )
 }

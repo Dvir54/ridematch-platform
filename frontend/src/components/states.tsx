@@ -71,3 +71,45 @@ export function ConfigurationNeeded({ variable }: { variable: string }) {
     />
   )
 }
+
+/** A list or card that is still loading, inside a shell that already rendered. */
+export function InlineLoader({ label }: { label: string }) {
+  return (
+    <p role="status" aria-live="polite" className="py-8 text-sm text-ink-70">
+      {label}
+    </p>
+  )
+}
+
+/**
+ * A list that failed. Shows the reason by `code` (never the raw message) and a
+ * way back — a dead end with no retry is the worst version of this.
+ */
+export function LoadFailure({
+  title = 'That did not load',
+  message,
+  onRetry,
+}: {
+  title?: string
+  message: string
+  onRetry?: () => void
+}) {
+  return (
+    <div
+      role="alert"
+      className="rounded-card border border-alert/30 bg-alert-wash px-4 py-4 text-sm"
+    >
+      <p className="font-semibold text-alert">{title}</p>
+      <p className="mt-1 text-ink-70">{message}</p>
+      {onRetry ? (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mt-3 text-sm font-semibold text-ink underline decoration-ink/30 underline-offset-4"
+        >
+          Try again
+        </button>
+      ) : null}
+    </div>
+  )
+}

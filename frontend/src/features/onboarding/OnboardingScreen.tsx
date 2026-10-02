@@ -4,6 +4,7 @@ import { useUser } from '@clerk/clerk-react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useCompleteOnboarding, useSession } from '../../api/hooks/users'
 import { isApiError, messageFor } from '../../api/errors'
+import { collectFieldErrors } from '../../api/fieldErrors'
 import type { Gender, OnboardingRequest } from '../../api/types'
 import { Button } from '../../components/Button'
 import { CheckboxField, SelectField, TextField } from '../../components/Field'
@@ -33,6 +34,23 @@ interface FormState {
 }
 
 type Errors = Partial<Record<keyof FormState, string>>
+
+/**
+ * Which control shows a server-named field. The vehicle sub-fields are the ones
+ * that used to go missing: a 422 on `vehicle.plate` set no error and the banner was
+ * suppressed for VALIDATION_ERROR, so the form appeared to do nothing at all.
+ */
+const FIELD_OWNERS: Record<string, keyof FormState> = {
+  name: 'name',
+  phone: 'phone',
+  date_of_birth: 'dateOfBirth',
+  gender: 'gender',
+  accepted_terms: 'acceptedTerms',
+  'vehicle.make': 'make',
+  'vehicle.model': 'model',
+  'vehicle.color': 'color',
+  'vehicle.plate': 'plate',
+}
 
 function validate(form: FormState): Errors {
   const errors: Errors = {}
@@ -79,6 +97,8 @@ export function OnboardingScreen() {
     acceptedTerms: false,
   })
   const [errors, setErrors] = useState<Errors>({})
+  /** 422 details naming something this form has no input for (contract 0.4.5). */
+  const [unplaceable, setUnplaceable] = useState<string[]>([])
   const [nameTouched, setNameTouched] = useState(false)
 
   // Clerk already collected a name at sign-up; offer it instead of asking twice.
@@ -94,6 +114,8 @@ export function OnboardingScreen() {
     const candidate = { ...form, name }
     const found = validate(candidate)
     setErrors(found)
+    // A previous server answer described a body we are no longer sending.
+    setUnplaceable([])
     if (Object.keys(found).length > 0) return
 
     const body: OnboardingRequest = {
@@ -122,16 +144,20 @@ export function OnboardingScreen() {
         navigate('/app', { replace: true })
         return
       }
+      const fromServer = collectFieldErrors(error, FIELD_OWNERS)
       setErrors({
-        name: error.fieldError('name'),
-        phone: error.fieldError('phone'),
-        dateOfBirth: error.is('UNDERAGE')
-          ? 'You must be 18 or older to use RideMatch.'
-          : error.fieldError('date_of_birth'),
-        acceptedTerms: error.is('TERMS_NOT_ACCEPTED')
-          ? 'Accept the terms to continue.'
-          : error.fieldError('accepted_terms'),
+        ...fromServer.fields,
+        // These two codes carry their own meaning, so they beat whatever the
+        // server wrote about the same field.
+        ...(error.is('UNDERAGE')
+          ? { dateOfBirth: 'You must be 18 or older to use RideMatch.' }
+          : {}),
+        ...(error.is('TERMS_NOT_ACCEPTED')
+          ? { acceptedTerms: 'Accept the terms to continue.' }
+          : {}),
       })
+      // Anything that named no control of ours still has to be readable.
+      setUnplaceable(fromServer.rest)
     }
   }
 
@@ -139,8 +165,13 @@ export function OnboardingScreen() {
   if (session.data?.status === 'ready') return <Navigate to="/app" replace />
 
   const failure = onboard.isError && isApiError(onboard.error) ? onboard.error : null
+  // A VALIDATION_ERROR normally speaks through the fields it named. It only needs
+  // the banner when it named something this form has no input for — otherwise the
+  // submit would look like it did nothing.
   const showBanner =
-    failure !== null && !failure.is('UNDERAGE', 'TERMS_NOT_ACCEPTED', 'VALIDATION_ERROR')
+    failure !== null &&
+    (!failure.is('UNDERAGE', 'TERMS_NOT_ACCEPTED', 'VALIDATION_ERROR') ||
+      unplaceable.length > 0)
 
   return (
     <div className="mx-auto min-h-dvh w-full max-w-[34rem] px-5 py-8">
@@ -155,7 +186,16 @@ export function OnboardingScreen() {
       </p>
 
       <form className="mt-8 flex flex-col gap-6" onSubmit={(event) => void handleSubmit(event)}>
-        {showBanner ? <ErrorNotice>{messageFor(failure)}</ErrorNotice> : null}
+        {showBanner ? (
+          <ErrorNotice>
+            {messageFor(failure)}
+            {unplaceable.map((message) => (
+              <span key={message} className="mt-1 block font-normal">
+                {message}
+              </span>
+            ))}
+          </ErrorNotice>
+        ) : null}
 
         <TextField
           label="Name"

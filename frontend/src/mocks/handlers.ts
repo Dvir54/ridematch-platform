@@ -3,29 +3,20 @@ import { env } from '../env'
 import { isAdult } from '../lib/dates'
 import { isValidPhone, PHONE_HINT } from '../lib/phone'
 import type {
-  ApiErrorBody,
   OnboardingRequest,
   UserMe,
-  UserPatch,
-  UserPublic,
+  UserPreferences,
+  UserPreferencesPatch,
+  UserUpdate,
 } from '../api/types'
-import { db, defaultPreferences } from './db'
+import { db, defaultNotifications, defaultPreferences, findUser } from './db'
+import { fail, onboardingRequired, notFound, signedIn, unauthenticated } from './http'
+import { mapboxHandlers } from './mapboxHandlers'
+import { toPublic } from './project'
+import { requestHandlers } from './requestHandlers'
+import { rideHandlers } from './rideHandlers'
 
 const base = env.apiBaseUrl.replace(/\/$/, '')
-
-function fail(status: number, code: string, message: string, details?: ApiErrorBody['details']) {
-  const body: ApiErrorBody = { code, message }
-  if (details) body.details = details
-  return HttpResponse.json(body, { status })
-}
-
-/** The mock has no Clerk; any bearer token counts as a signed-in caller. */
-function signedIn(request: Request): boolean {
-  return (request.headers.get('Authorization') ?? '').startsWith('Bearer ')
-}
-
-const unauthenticated = () =>
-  fail(401, 'UNAUTHENTICATED', 'Missing or invalid session token.')
 
 /** openapi.yaml shares one `Phone` primitive across onboarding and PATCH. */
 const badPhone = () =>
@@ -33,31 +24,33 @@ const badPhone = () =>
     { field: 'body.phone', message: PHONE_HINT },
   ])
 
-function toPublic(user: UserMe): UserPublic {
+/**
+ * Preferences shallow-merge, and the `notifications` sub-object merges too
+ * (CONTRACT §4) — so a patch naming one key never drops the others.
+ */
+function mergePreferences(
+  current: UserPreferences,
+  patch: UserPreferencesPatch | undefined,
+): UserPreferences {
   return {
-    id: user.id,
-    name: user.name,
-    driver_rating: user.driver_rating ?? null,
-    driver_rating_count: user.driver_rating_count,
-    passenger_rating: user.passenger_rating ?? null,
-    passenger_rating_count: user.passenger_rating_count,
-    vehicle: user.vehicle
-      ? { make: user.vehicle.make, model: user.vehicle.model, color: user.vehicle.color }
-      : null,
-    created_at: user.created_at,
+    ...current,
+    ...patch,
+    notifications: {
+      ...defaultNotifications,
+      ...current.notifications,
+      ...patch?.notifications,
+    },
   }
 }
 
-export const handlers = [
+const userHandlers = [
   http.get(`${base}/health`, () =>
     HttpResponse.json({ status: 'ok', db: true, redis: true }),
   ),
 
   http.get(`${base}/users/me`, ({ request }) => {
     if (!signedIn(request)) return unauthenticated()
-    if (!db.me) {
-      return fail(403, 'ONBOARDING_REQUIRED', 'Complete onboarding to use RideMatch.')
-    }
+    if (!db.me) return onboardingRequired()
     if (!db.me.is_active) {
       return fail(403, 'ACCOUNT_DEACTIVATED', 'This account is deactivated.')
     }
@@ -97,7 +90,7 @@ export const handlers = [
       driver_rating_count: 0,
       passenger_rating: null,
       passenger_rating_count: 0,
-      preferences: { ...defaultPreferences, ...body.preferences },
+      preferences: mergePreferences(defaultPreferences, body.preferences),
       vehicle: body.vehicle ?? null,
       created_at: new Date().toISOString(),
       last_login_at: new Date().toISOString(),
@@ -107,9 +100,9 @@ export const handlers = [
 
   http.patch(`${base}/users/me`, async ({ request }) => {
     if (!signedIn(request)) return unauthenticated()
-    if (!db.me) return fail(403, 'ONBOARDING_REQUIRED', 'Complete onboarding first.')
+    if (!db.me) return onboardingRequired()
 
-    const patch = (await request.json()) as UserPatch
+    const patch = (await request.json()) as UserUpdate
     if (patch.phone !== null && patch.phone !== undefined && !isValidPhone(patch.phone)) {
       return badPhone()
     }
@@ -118,23 +111,22 @@ export const handlers = [
     db.me = {
       ...db.me,
       ...rest,
-      preferences: {
-        ...db.me.preferences,
-        ...preferences,
-        notifications: {
-          ...(db.me.preferences.notifications ?? defaultPreferences.notifications),
-          ...preferences?.notifications,
-        },
-      },
-    } as UserMe
+      preferences: mergePreferences(db.me.preferences, preferences),
+    }
     return HttpResponse.json(db.me)
   }),
 
   http.get(`${base}/users/:userId`, ({ request, params }) => {
     if (!signedIn(request)) return unauthenticated()
-    const id = Number(params.userId)
-    const user = [db.me, ...db.users].find((candidate) => candidate?.id === id)
-    if (!user) return fail(404, 'NOT_FOUND', 'No such user.')
+    const user: UserMe | undefined = findUser(Number(params.userId))
+    if (!user) return notFound('user')
     return HttpResponse.json(toPublic(user))
   }),
+]
+
+export const handlers = [
+  ...userHandlers,
+  ...rideHandlers,
+  ...requestHandlers,
+  ...mapboxHandlers,
 ]

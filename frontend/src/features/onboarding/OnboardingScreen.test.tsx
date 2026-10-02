@@ -1,8 +1,10 @@
+import { http, HttpResponse } from 'msw'
 import { Route, Routes } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import { screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { db } from '../../mocks/db'
+import { server } from '../../mocks/node'
 import { renderWithProviders } from '../../test/utils'
 import { OnboardingScreen } from './OnboardingScreen'
 
@@ -88,5 +90,72 @@ describe('onboarding', () => {
         plate: '12-345-67',
       }),
     )
+  })
+})
+
+/**
+ * A VALIDATION_ERROR normally speaks through the fields it names, and the banner
+ * stays hidden so the reason is not said twice. That only works while every field
+ * the server can name has an input here — otherwise the submit looked like it did
+ * nothing at all. Contract 0.4.5 says `field` may get more specific over time, so
+ * the fallback has to hold for names this form has never seen.
+ */
+describe('a 422 naming a field the form did not expect', () => {
+  function rejectOnboardingWith(details: { field: string; message: string }[]) {
+    server.use(
+      http.post('*/users/me/onboarding', () =>
+        HttpResponse.json(
+          { code: 'VALIDATION_ERROR', message: 'Some details need fixing.', details },
+          { status: 422 },
+        ),
+      ),
+    )
+  }
+
+  async function fillAndSubmit({ withVehicle = false } = {}) {
+    const user = userEvent.setup()
+    renderScreen()
+    await user.type(await screen.findByLabelText('Date of birth'), '1996-02-11')
+    await user.click(screen.getByLabelText(/I accept the RideMatch terms/))
+
+    if (withVehicle) {
+      await user.click(screen.getByLabelText(/add my car now/))
+      await user.type(screen.getByLabelText('Make'), 'Mazda')
+      await user.type(screen.getByLabelText('Model'), '3')
+      await user.type(screen.getByLabelText('Colour'), 'Grey')
+      await user.type(screen.getByLabelText('Licence plate'), 'AB')
+    }
+
+    await user.click(screen.getByRole('button', { name: 'Create profile' }))
+  }
+
+  it('lands a vehicle sub-field on the input that owns it', async () => {
+    // The server can only name `vehicle.plate` on a body that carried a vehicle,
+    // which is exactly when that input is on screen.
+    rejectOnboardingWith([{ field: 'body.vehicle.plate', message: 'A plate needs 2 characters.' }])
+    await fillAndSubmit({ withVehicle: true })
+
+    expect(await screen.findByText('A plate needs 2 characters.')).toBeVisible()
+    expect(screen.getByLabelText('Licence plate')).toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('shows a field it cannot place rather than failing silently', async () => {
+    rejectOnboardingWith([
+      { field: 'body.preferences.language', message: 'That language is not supported.' },
+    ])
+    await fillAndSubmit()
+
+    // Previously: no field error set, banner suppressed for VALIDATION_ERROR, so
+    // the form appeared to do nothing.
+    expect(await screen.findByText('That language is not supported.')).toBeVisible()
+    expect(screen.getByText('Some details need fixing.')).toBeVisible()
+  })
+
+  it('keeps the banner hidden when every named field has its own input', async () => {
+    rejectOnboardingWith([{ field: 'body.name', message: 'That name is too long.' }])
+    await fillAndSubmit()
+
+    expect(await screen.findByText('That name is too long.')).toBeVisible()
+    expect(screen.queryByText('Some details need fixing.')).not.toBeInTheDocument()
   })
 })
