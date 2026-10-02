@@ -449,3 +449,40 @@ class TestTheRideSnapshotInARequest:
         request = await requests.create(offer, passenger)
         assert request["ride"]["departure_time"].endswith("Z")
         assert clock.parse(request["ride"]["departure_time"]) > clock.now()
+
+
+class TestMyRequest:
+    """Ride.my_request (CONTRACT.md §4 "Requests"), untested since 0.4.4."""
+
+    async def test_null_when_the_caller_never_requested(self, rides, offer, passenger) -> None:
+        ride = await rides.fetch(offer, as_user=passenger)
+        assert ride["my_request"] is None
+
+    async def test_null_for_the_driver_on_their_own_ride(self, rides, offer) -> None:
+        ride = await rides.fetch(offer, as_user=offer.driver)
+        assert ride["my_request"] is None
+
+    async def test_reflects_pending_then_approved(self, rides, requests, offer, passenger) -> None:
+        request = await requests.create(offer, passenger, seats=2)
+
+        ride = await rides.fetch(offer, as_user=passenger)
+        assert ride["my_request"] == {
+            "id": request["id"],
+            "status": "pending",
+            "seats_requested": 2,
+        }
+
+        await requests.approve(request, offer.driver)
+        ride = await rides.fetch(offer, as_user=passenger)
+        assert ride["my_request"]["status"] == "approved"
+
+    async def test_null_again_after_the_passengers_own_cancel(
+        self, rides, requests, offer, passenger
+    ) -> None:
+        """CONTRACT.md D2: a cancelled row reads as null, so the request button
+        comes back."""
+        request = await requests.create(offer, passenger)
+        await requests.cancel(request, passenger)
+
+        ride = await rides.fetch(offer, as_user=passenger)
+        assert ride["my_request"] is None
