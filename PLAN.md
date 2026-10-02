@@ -73,17 +73,25 @@ A phase is **done** only when its gate passes. Then Dvir merges into `main` and 
 **@tests**: every admin endpoint as non-admin → 403; deactivate/reactivate effects (403 on the next request, sockets closed); force-cancel side effects; analytics numbers on seeded data; webhook signatures (valid, invalid, replayed `svix-id`).
 **Gate:** tests green. Dvir tests the admin panel by hand.
 
-## Phase 7: Hardening & end-to-end
-**@backend**: a seed script with demo data, structured logging, rate limiting on writes (optional), query/index check on search.
-**@frontend**: loading, empty and error states everywhere; mobile layout; basic accessibility; a production build with no warnings.
-**@tests**: Playwright E2E for the main flows against the full stack (Clerk dev instance test users); Schemathesis fuzzing of the API against `openapi.yaml`; fix flaky tests.
-**Gate:** E2E + fuzzing green in CI.
+## Phases 7–8: one session, straight on `main`
+From Phase 7 on there are no feature branches, worktrees or PRs. One Claude session works in `ridematch-platform\` on `main`, owns every folder, and commits locally. Dvir pushes `main`.
+Work in **chunks**. Each chunk: do only its items, run its checks, commit, give a ≤5-line summary, stop. Dvir runs `/clear` before the next chunk.
+GitHub Actions is blocked on the account (support ticket pending), so every gate is checked **locally** until it runs.
 
-## Phase 8: Deploy (Dvir + @backend)
-- Pick hosting (e.g. Render, Fly or Railway, with managed Postgres + Redis). Dockerfile for the backend; the frontend as static files.
-- Domain + HTTPS. Clerk production instance with its own keys. Add the domain to `CLERK_AUTHORIZED_PARTIES`, `CORS_ORIGINS` and the Mapbox token restrictions.
-- Set the Clerk webhook to `https://<api-domain>/api/v1/webhooks/clerk`.
-- CI deploys `main` after tests pass.
+### Phase 7: Hardening & end-to-end
+- **7.0 Setup** (once): `scripts/remove-worktrees.sh` + delete the three `feat/*` branches (Dvir); `uv sync` in `backend/` and `tests/`, `npm install` in `frontend/`. Check `/health` is `ok`.
+- **7a Backend:** a seed script with demo data; structured logging; query/index check on search. (Rate limiting on writes: skip unless Dvir asks.)
+- **7b Frontend:** loading, empty and error states everywhere; mobile layout; basic accessibility; a production build with no warnings.
+- **7c Test fixes:** fix the flaky setup-time `ConnectionResetError` (pool the connection in `tests/support/db.py`); default test DB/Redis URLs to `127.0.0.1` (Docker's IPv6 forward hangs here).
+- **7d E2E:** Playwright for the main flows against the full stack (Clerk dev instance test users).
+- **7e Fuzzing:** Schemathesis against `openapi.yaml`.
+- **Gate:** full pytest suite, frontend checks, E2E and fuzzing all green locally. CI jobs for E2E + fuzzing are added to `ci.yml` but can't run until Actions is unblocked.
+
+### Phase 8: Deploy (Dvir + the session)
+- **8a Build:** Dockerfile for the backend; the frontend as static files; production settings documented in `.env.example`.
+- **8b Hosting** (Dvir picks: e.g. Render, Fly or Railway, with managed Postgres + Redis): config files for it; the host auto-deploys `main` (instead of CI) until Actions works.
+- **8c Production:** domain + HTTPS. Clerk production instance with its own keys. Add the domain to `CLERK_AUTHORIZED_PARTIES`, `CORS_ORIGINS` and the Mapbox token restrictions. Clerk webhook → `https://<api-domain>/api/v1/webhooks/clerk`.
+- **Gate:** sign up, post a ride, request, approve (live), complete and rate on the production URL.
 
 ## Finish
-When all branches are merged: `./scripts/remove-worktrees.sh`. Only `ridematch-platform\` remains: the whole project on `main`.
+Done when Phase 8's gate passes. Only `ridematch-platform\` remains: the whole project on `main`.
