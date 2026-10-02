@@ -46,3 +46,9 @@ export const searchKeys = {
 export function statusParam(statuses?: readonly string[]): string | undefined {
   return statuses?.length ? [...statuses].join(',') : undefined
 }
+
+export const notificationKeys = {
+  all: ['notifications'] as const,
+  list: (unreadOnly: boolean) => ['notifications', 'list', unreadOnly] as const,
+  unreadCount: ['notifications', 'unread-count'] as const,
+}

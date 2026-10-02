@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { useUnreadCount } from '../api/hooks/notifications'
 import type { Mode } from '../api/types'
 import { paths } from '../routes'
 import { BellIcon, BoardIcon, InboxIcon, PersonIcon, SearchIcon, SeatIcon, WheelIcon } from './icons'
@@ -31,6 +32,8 @@ const BY_MODE: Record<Mode, NavItem[]> = {
 }
 
 export function BottomNav({ mode }: { mode: Mode }) {
+  const unreadCount = useUnreadCount()
+
   return (
     <nav
       aria-label="Main"
@@ -48,7 +51,17 @@ export function BottomNav({ mode }: { mode: Mode }) {
                 }`
               }
             >
-              <Icon width="20" height="20" />
+              <span className="relative">
+                <Icon width="20" height="20" />
+                {to === paths.notifications && unreadCount.data ? (
+                  <span
+                    aria-hidden="true"
+                    className="absolute -right-2 -top-1 min-w-[1rem] rounded-full bg-alert px-1 text-center text-[0.625rem] font-bold leading-4 text-surface"
+                  >
+                    {unreadCount.data > 9 ? '9+' : unreadCount.data}
+                  </span>
+                ) : null}
+              </span>
               {label}
             </NavLink>
           </li>

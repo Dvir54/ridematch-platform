@@ -1,6 +1,7 @@
 import { Outlet, useLocation } from 'react-router-dom'
 import { useCurrentUser } from '../auth/currentUserContext'
 import { modeFromPath } from '../routes'
+import { NotificationSocketProvider } from '../ws/NotificationSocketProvider'
 import { BottomNav } from './BottomNav'
 import { ModeSwitcher } from './ModeSwitcher'
 import { Wordmark } from './Wordmark'
@@ -12,6 +13,7 @@ export function AppShell() {
 
   return (
     <div className="min-h-dvh">
+      <NotificationSocketProvider />
       <header className="border-b border-hairline bg-surface">
         <div className="mx-auto flex max-w-[34rem] items-center justify-between gap-4 px-5 py-3">
           <Wordmark />
