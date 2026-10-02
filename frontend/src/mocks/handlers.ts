@@ -7,6 +7,7 @@ import type {
   UserMe,
   UserPreferences,
   UserPreferencesPatch,
+  UserStats,
   UserUpdate,
 } from '../api/types'
 import { db, defaultNotifications, defaultPreferences, findUser } from './db'
@@ -14,6 +15,7 @@ import { conflict, fail, onboardingRequired, notFound, signedIn, unauthenticated
 import { mapboxHandlers } from './mapboxHandlers'
 import { notificationHandlers } from './notificationHandlers'
 import { toPublic } from './project'
+import { ratingHandlers } from './ratingHandlers'
 import { requestHandlers } from './requestHandlers'
 import { rideHandlers } from './rideHandlers'
 import { searchHandlers } from './searchHandlers'
@@ -127,6 +129,53 @@ const userHandlers = [
     return HttpResponse.json(db.me)
   }),
 
+  http.get(`${base}/users/me/stats`, ({ request }) => {
+    if (!signedIn(request)) return unauthenticated()
+    if (!db.me) return onboardingRequired()
+    const me = db.me
+
+    const myRides = db.rides.filter((row) => row.driver_id === me.id)
+    const myRideIds = new Set(myRides.map((row) => row.id))
+    const myRequests = db.requests.filter((row) => row.passenger_id === me.id)
+
+    const stats: UserStats = {
+      as_driver: {
+        rides_offered: myRides.length,
+        rides_completed: myRides.filter((row) => row.status === 'completed').length,
+        upcoming_rides: myRides.filter((row) => row.status === 'upcoming' || row.status === 'full')
+          .length,
+        pending_requests: db.requests.filter(
+          (row) => myRideIds.has(row.ride_id) && row.status === 'pending',
+        ).length,
+        passengers_carried: myRides
+          .filter((row) => row.status === 'completed')
+          .reduce(
+            (total, row) =>
+              total +
+              db.requests
+                .filter((req) => req.ride_id === row.id && req.status === 'approved')
+                .reduce((seats, req) => seats + req.seats_requested, 0),
+            0,
+          ),
+      },
+      as_passenger: {
+        trips_requested: myRequests.length,
+        trips_completed: myRequests.filter((row) => {
+          const ride = db.rides.find((candidate) => candidate.id === row.ride_id)
+          return row.status === 'approved' && ride?.status === 'completed'
+        }).length,
+        upcoming_trips: myRequests.filter((row) => {
+          const ride = db.rides.find((candidate) => candidate.id === row.ride_id)
+          return (
+            row.status === 'approved' &&
+            (ride?.status === 'upcoming' || ride?.status === 'full' || ride?.status === 'in_progress')
+          )
+        }).length,
+      },
+    }
+    return HttpResponse.json(stats)
+  }),
+
   http.get(`${base}/users/:userId`, ({ request, params }) => {
     if (!signedIn(request)) return unauthenticated()
     const user: UserMe | undefined = findUser(Number(params.userId))
@@ -139,6 +188,7 @@ export const handlers = [
   ...userHandlers,
   ...rideHandlers,
   ...requestHandlers,
+  ...ratingHandlers,
   ...searchHandlers,
   ...notificationHandlers,
   ...mapboxHandlers,

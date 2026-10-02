@@ -1,14 +1,35 @@
 import { messageFor } from '../../api/errors'
 import { useMyRequests } from '../../api/hooks/requests'
+import { useMyStats } from '../../api/hooks/users'
 import { useCurrentUser } from '../../auth/currentUserContext'
 import { ButtonLink } from '../../components/Button'
 import { RideCard } from '../../components/RideCard'
+import { StatsGrid } from '../../components/StatsGrid'
 import { RequestStatusPill } from '../../components/StatusPill'
 import { TabHeader } from '../../components/TabHeader'
 import { EmptyState, InlineLoader, LoadFailure } from '../../components/states'
 import { paths } from '../../routes'
+import { RatingPrompt } from '../ratings/RatingPrompt'
 
 const ACTIVE = ['pending', 'approved'] as const
+
+/** Quick counters — the full breakdown lives on Profile. */
+function HomeStats() {
+  const stats = useMyStats()
+  if (!stats.data) return null
+  const { as_passenger } = stats.data
+  return (
+    <div className="mb-6">
+      <StatsGrid
+        items={[
+          { label: 'Upcoming', value: as_passenger.upcoming_trips },
+          { label: 'Completed', value: as_passenger.trips_completed },
+          { label: 'Requested', value: as_passenger.trips_requested },
+        ]}
+      />
+    </div>
+  )
+}
 
 export function PassengerHomeScreen() {
   const me = useCurrentUser()
@@ -30,6 +51,9 @@ export function PassengerHomeScreen() {
       <div className="mb-6">
         <ButtonLink to={paths.passengerSearch}>Find a ride</ButtonLink>
       </div>
+
+      <HomeStats />
+      <RatingPrompt />
 
       {waiting > 0 ? (
         <p className="mb-5 text-sm text-ink-70">

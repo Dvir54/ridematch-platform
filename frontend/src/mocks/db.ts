@@ -5,6 +5,7 @@ import type {
   RidePreferences,
   RideStatus,
   RequestStatus,
+  RoleRated,
   UserMe,
   UserPreferences,
 } from '../api/types'
@@ -71,6 +72,18 @@ export interface RequestRow {
   responded_at: string | null
 }
 
+export interface RatingRow {
+  id: number
+  ride_id: number
+  from_user_id: number
+  to_user_id: number
+  role_rated: RoleRated
+  score: number
+  comment: string | null
+  tags: string[]
+  created_at: string
+}
+
 export interface NotificationRow {
   id: number
   recipient_id: number
@@ -90,9 +103,11 @@ export interface MockDb {
   rides: RideRow[]
   requests: RequestRow[]
   notifications: NotificationRow[]
+  ratings: RatingRow[]
   nextRideId: number
   nextRequestId: number
   nextNotificationId: number
+  nextRatingId: number
 }
 
 function hoursFromNow(hours: number): string {
@@ -167,9 +182,11 @@ function seed(): MockDb {
     rides,
     requests: [],
     notifications: [],
+    ratings: [],
     nextRideId: 102,
     nextRequestId: 1,
     nextNotificationId: 1,
+    nextRatingId: 1,
   }
 }
 
@@ -272,6 +289,23 @@ export function seedNotification(overrides: Partial<NotificationRow> = {}): Noti
     ...overrides,
   }
   db.notifications.push(row)
+  return row
+}
+
+export function seedRating(overrides: Partial<RatingRow> = {}): RatingRow {
+  const row: RatingRow = {
+    id: overrides.id ?? db.nextRatingId++,
+    ride_id: 101,
+    from_user_id: 3,
+    to_user_id: 2,
+    role_rated: 'driver',
+    score: 5,
+    comment: null,
+    tags: [],
+    created_at: hoursFromNow(0),
+    ...overrides,
+  }
+  db.ratings.push(row)
   return row
 }
 

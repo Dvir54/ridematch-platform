@@ -1,5 +1,5 @@
-import type { MyRequest, Ride, RideRequest, UserMe, UserPublic } from '../api/types'
-import type { RequestRow, RideRow } from './db'
+import type { MyRequest, Rating, Ride, RideRequest, UserMe, UserPublic } from '../api/types'
+import type { RatingRow, RequestRow, RideRow } from './db'
 import { db, findUser } from './db'
 
 export function toPublic(user: UserMe): UserPublic {
@@ -88,6 +88,21 @@ export function toRide(row: RideRow, viewerId: number | null): Ride {
     my_request: myRequestFor(row, viewerId),
     created_at: row.created_at,
     updated_at: row.updated_at,
+  }
+}
+
+export function toRating(row: RatingRow): Rating {
+  const fromUser = findUser(row.from_user_id)
+  return {
+    id: row.id,
+    ride_id: row.ride_id,
+    from_user: fromUser ? toPublic(fromUser) : UNKNOWN_DRIVER,
+    to_user_id: row.to_user_id,
+    role_rated: row.role_rated,
+    score: row.score,
+    comment: row.comment,
+    tags: row.tags,
+    created_at: row.created_at,
   }
 }
 

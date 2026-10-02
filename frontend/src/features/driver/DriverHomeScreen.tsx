@@ -2,14 +2,35 @@ import { Link } from 'react-router-dom'
 import { messageFor } from '../../api/errors'
 import { useIncomingRequests } from '../../api/hooks/requests'
 import { useMyRides } from '../../api/hooks/rides'
+import { useMyStats } from '../../api/hooks/users'
 import { useCurrentUser } from '../../auth/currentUserContext'
 import { ButtonLink } from '../../components/Button'
 import { RideCard } from '../../components/RideCard'
+import { StatsGrid } from '../../components/StatsGrid'
 import { RideStatusPill } from '../../components/StatusPill'
 import { TabHeader } from '../../components/TabHeader'
 import { EmptyState, InlineLoader, LoadFailure } from '../../components/states'
 import { paths } from '../../routes'
+import { RatingPrompt } from '../ratings/RatingPrompt'
 import { VehicleNeededNotice } from './MyRidesScreen'
+
+/** Quick counters — the full breakdown lives on Profile. */
+function HomeStats() {
+  const stats = useMyStats()
+  if (!stats.data) return null
+  const { as_driver } = stats.data
+  return (
+    <div className="mb-6">
+      <StatsGrid
+        items={[
+          { label: 'Upcoming', value: as_driver.upcoming_rides },
+          { label: 'Completed', value: as_driver.rides_completed },
+          { label: 'Passengers carried', value: as_driver.passengers_carried },
+        ]}
+      />
+    </div>
+  )
+}
 
 const PLANNED = ['upcoming', 'full', 'in_progress'] as const
 
@@ -28,6 +49,9 @@ export function DriverHomeScreen() {
         title={`Driving, ${me.name.split(' ')[0]}`}
         lead="Your routes, the seats still free on them, and anyone waiting on your answer."
       />
+
+      <HomeStats />
+      <RatingPrompt />
 
       {pending > 0 ? (
         <Link

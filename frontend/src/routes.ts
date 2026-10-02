@@ -28,6 +28,8 @@ export const paths = {
 
   notifications: '/app/notifications',
   profile: '/app/profile',
+  user: (userId: number) => `/app/users/${userId}`,
+  rate: (rideId: number, userId: number) => `/app/rate/${rideId}/${userId}`,
 } as const
 
 export function homePathFor(mode: Mode): string {

@@ -1,4 +1,6 @@
+import { Link } from 'react-router-dom'
 import type { UserPublic } from '../api/types'
+import { paths } from '../routes'
 
 /**
  * Who you are riding with. The rating shown is the one for the role they play on
@@ -21,7 +23,13 @@ export function PersonLine({
   return (
     <p className="text-sm">
       {prefix ? <span className="text-ink-45">{prefix} </span> : null}
-      <span className="font-semibold">{person.name}</span>
+      {person.id > 0 ? (
+        <Link to={paths.user(person.id)} className="font-semibold underline decoration-ink/30 underline-offset-4">
+          {person.name}
+        </Link>
+      ) : (
+        <span className="font-semibold">{person.name}</span>
+      )}
       {rating !== null && rating !== undefined ? (
         <span className="tnum text-ink-70">
           {' · '}

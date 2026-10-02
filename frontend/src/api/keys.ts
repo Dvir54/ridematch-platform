@@ -1,4 +1,4 @@
-import type { RequestStatus, RideStatus, SearchSort } from './types'
+import type { RequestStatus, RideStatus, RoleRated, SearchSort } from './types'
 
 /** Query keys shared between the hooks and the cache-wide error handling. */
 export const sessionKey = ['session'] as const
@@ -51,4 +51,17 @@ export const notificationKeys = {
   all: ['notifications'] as const,
   list: (unreadOnly: boolean) => ['notifications', 'list', unreadOnly] as const,
   unreadCount: ['notifications', 'unread-count'] as const,
+}
+
+export const userKeys = {
+  detail: (userId: number) => ['users', 'detail', userId] as const,
+}
+
+export const statsKey = ['users', 'me', 'stats'] as const
+
+export const ratingKeys = {
+  all: ['ratings'] as const,
+  pending: ['ratings', 'pending'] as const,
+  byUser: (userId: number, roleRated?: RoleRated) =>
+    ['ratings', 'user', userId, roleRated ?? 'all'] as const,
 }

@@ -1,7 +1,12 @@
 import { useClerk } from '@clerk/clerk-react'
+import { messageFor } from '../../api/errors'
+import { useMyStats } from '../../api/hooks/users'
 import { useCurrentUser } from '../../auth/currentUserContext'
 import { Button } from '../../components/Button'
+import { StatsGrid } from '../../components/StatsGrid'
 import { TabHeader } from '../../components/TabHeader'
+import { InlineLoader, LoadFailure } from '../../components/states'
+import { formatRating } from '../../lib/rating'
 import { VehicleEditor } from './VehicleEditor'
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -13,9 +18,47 @@ function Row({ label, value }: { label: string; value: string }) {
   )
 }
 
-function rating(score: number | null | undefined, count: number): string {
-  if (score === null || score === undefined || count === 0) return 'Not rated yet'
-  return `${score.toFixed(1)} from ${count} ${count === 1 ? 'rating' : 'ratings'}`
+/** The full trip record behind the quick counters on each Home screen. */
+function TripStats() {
+  const stats = useMyStats()
+
+  if (stats.isPending) return <InlineLoader label="Loading your trip history" />
+  if (stats.isError) {
+    return (
+      <LoadFailure
+        title="Your trip history did not load"
+        message={messageFor(stats.error)}
+        onRetry={() => void stats.refetch()}
+      />
+    )
+  }
+
+  const { as_driver, as_passenger } = stats.data
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <h3 className="mb-2 text-sm font-semibold">As a driver</h3>
+        <StatsGrid
+          items={[
+            { label: 'Rides offered', value: as_driver.rides_offered },
+            { label: 'Completed', value: as_driver.rides_completed },
+            { label: 'Passengers carried', value: as_driver.passengers_carried },
+          ]}
+        />
+      </div>
+      <div>
+        <h3 className="mb-2 text-sm font-semibold">As a passenger</h3>
+        <StatsGrid
+          items={[
+            { label: 'Trips requested', value: as_passenger.trips_requested },
+            { label: 'Completed', value: as_passenger.trips_completed },
+            { label: 'Upcoming', value: as_passenger.upcoming_trips },
+          ]}
+        />
+      </div>
+    </div>
+  )
 }
 
 export function ProfileScreen() {
@@ -35,13 +78,21 @@ export function ProfileScreen() {
         <h2 className="sr-only">Your account</h2>
         <dl>
           <Row label="Member since" value={memberSince} />
-          <Row label="As a driver" value={rating(user.driver_rating, user.driver_rating_count)} />
+          <Row
+            label="As a driver"
+            value={formatRating(user.driver_rating, user.driver_rating_count)}
+          />
           <Row
             label="As a passenger"
-            value={rating(user.passenger_rating, user.passenger_rating_count)}
+            value={formatRating(user.passenger_rating, user.passenger_rating_count)}
           />
           <Row label="Phone" value={user.phone ?? 'Not added'} />
         </dl>
+      </section>
+
+      <section className="mt-5">
+        <h2 className="mb-3 text-lg">Your trips</h2>
+        <TripStats />
       </section>
 
       <section className="mt-5 rounded-card border border-hairline bg-surface px-5 py-4">

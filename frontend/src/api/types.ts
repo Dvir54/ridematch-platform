@@ -46,3 +46,8 @@ export type RideMatch = Schemas['RideMatch']
 export type SearchSort = 'best_match' | 'earliest' | 'cheapest'
 
 export type Notification = Schemas['Notification']
+
+export type RoleRated = Schemas['RoleRated']
+export type Rating = Schemas['Rating']
+export type RatingCreate = Schemas['RatingCreate']
+export type PendingRating = Schemas['PendingRating']
