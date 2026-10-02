@@ -14,13 +14,22 @@ belong to Dvir. Propose changes to him; don't edit them.
 
 ## Source of truth
 - `contracts/openapi.yaml` gives the shapes, `contracts/CONTRACT.md` gives the behavior, and `contracts/schema.sql` gives the DB.
-- Read CONTRACT.md fully before your first task. Re-read the relevant section before each feature.
+- Read CONTRACT.md §1–2 once. Before each feature, read only the sections it needs.
 - The contract wins over your assumptions. If it's ambiguous or wrong, **stop and ask**: message @backend (if you're not @backend), or tell Dvir in your own session. Never quietly implement your own interpretation.
 - Only @backend edits `contracts/`, following CONTRACT.md §1: bump the version, commit the contract on its own, then message @frontend and @tests.
 
 ## Work order
 - Work phase by phase from `PLAN.md`. Do only **your** tasks for the **current** phase.
 - When your phase tasks are done: commit, push your branch and open a PR into `main` (see Git), message the sessions that depend on you, then stop and give Dvir a short summary (what's done, what's blocked, anything he must decide, and the PR link). Don't start the next phase until Dvir says so.
+
+## Budget
+Tokens are limited. Keep each phase lean:
+- Scope: do only your PLAN tasks for the current phase. No extra hardening, audits, generators or smoke scripts. If you think something extra is worth doing, propose it in one line in your summary instead.
+- Reading: read only the CONTRACT/openapi sections your phase needs. Don't re-read files you already have in context.
+- Checks: while working, run only the tests/files you touched, with output piped through `| tail -20`. Run the full check once, before the final commit.
+- Contract: change it only when something blocks you, and batch all changes into one version bump per phase.
+- Messages: at most 5 lines, facts only (READY / FAIL / FIXED / a question). Don't reply just to agree or to share lessons.
+- Summary to Dvir: at most 10 lines.
 
 ## Git
 - Stay on your own branch. Never check out `main` or another branch. Never rebase, force-push or `reset --hard`.
