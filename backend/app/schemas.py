@@ -37,7 +37,7 @@ def _as_aware(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value
 
 
-def _money_from_string(value: object) -> object:
+def money_from_string(value: object) -> object:
     """openapi.yaml types Money as a `string`, which is exactly what keeps a float out.
 
     Pydantic would happily read `25.5` into a `Decimal`, so the check has to be explicit.
@@ -67,7 +67,7 @@ Money = Annotated[
 #: Money on the way **in**: a decimal string only (CONTRACT.md §2 — "Never a float").
 MoneyIn = Annotated[
     Decimal,
-    BeforeValidator(_money_from_string),
+    BeforeValidator(money_from_string),
     Field(ge=0, max_digits=10, decimal_places=2),
     PlainSerializer(_as_money, return_type=str),
 ]
