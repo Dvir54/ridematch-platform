@@ -96,6 +96,18 @@ class TestDatabase:
     async def set_active(self, user_id: int, value: bool) -> None:
         await self.execute("UPDATE users SET is_active = $2 WHERE id = $1", user_id, value)
 
+    async def set_driver_rating(self, user_id: int, rating: float, count: int = 1) -> None:
+        """Set a cached driver rating directly. Ratings themselves have no
+        endpoint until Phase 5 (PLAN), so the matching formula's rating
+        component (CONTRACT.md §7) can only be exercised this way for now -
+        the same exception `set_admin`/`set_active` already rely on."""
+        await self.execute(
+            "UPDATE users SET driver_rating = $2, driver_rating_count = $3 WHERE id = $1",
+            user_id,
+            rating,
+            count,
+        )
+
     async def user_row(self, user_id: int) -> asyncpg.Record | None:
         return await self.fetchrow("SELECT * FROM users WHERE id = $1", user_id)
 

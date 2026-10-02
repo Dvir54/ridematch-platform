@@ -22,6 +22,7 @@ from support.db import TestDatabase
 from support.factories import Users
 from support.keys import KeyPair, TokenSigner
 from support.rides import RideRequests, Rides
+from support.search import Search
 
 # One key pair per session: the public half is what the backend verifies with.
 KEYS = KeyPair.generate()
@@ -136,6 +137,11 @@ def requests(client, users: Users) -> RideRequests:
     """The ride-request endpoints. Named for the contract's resource, not for
     any HTTP library - the suite only ever speaks through `client`."""
     return RideRequests(client, users)
+
+
+@pytest.fixture
+def search(client) -> Search:
+    return Search(client)
 
 
 @pytest.fixture
