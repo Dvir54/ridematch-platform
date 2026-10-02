@@ -6,8 +6,10 @@ contract rather than running the backend's Alembic migration is deliberate: it
 is the contract that tests are supposed to prove, so a migration that drifts
 from `schema.sql` shows up as failing tests instead of passing ones.
 
-Every call opens its own connection. That costs a few milliseconds but keeps
-the helper free of any connection bound to a particular asyncio event loop.
+Calls share one lazily created pool. The suite runs on a single session-scoped
+event loop (pyproject.toml), so the pool is never used from another loop. Opening
+a fresh connection per call used to hit sporadic `ConnectionResetError`s on
+Windows during setup.
 """
 
 from __future__ import annotations
@@ -27,49 +29,43 @@ class TestDatabase:
 
     def __init__(self, dsn: str | None = None) -> None:
         self.dsn = dsn or env.asyncpg_dsn()
+        self._pool: asyncpg.Pool | None = None
 
-    async def _connect(self) -> asyncpg.Connection:
-        return await asyncpg.connect(self.dsn)
+    async def _get_pool(self) -> asyncpg.Pool:
+        if self._pool is None:
+            self._pool = await asyncpg.create_pool(self.dsn, min_size=1, max_size=4)
+        return self._pool
+
+    async def close(self) -> None:
+        if self._pool is not None:
+            await self._pool.close()
+            self._pool = None
 
     # ── raw access ──────────────────────────────────────────────────────
     async def execute(self, sql: str, *args: Any) -> str:
-        conn = await self._connect()
-        try:
-            return await conn.execute(sql, *args)
-        finally:
-            await conn.close()
+        pool = await self._get_pool()
+        return await pool.execute(sql, *args)
 
     async def fetch(self, sql: str, *args: Any) -> list[asyncpg.Record]:
-        conn = await self._connect()
-        try:
-            return await conn.fetch(sql, *args)
-        finally:
-            await conn.close()
+        pool = await self._get_pool()
+        return await pool.fetch(sql, *args)
 
     async def fetchrow(self, sql: str, *args: Any) -> asyncpg.Record | None:
-        conn = await self._connect()
-        try:
-            return await conn.fetchrow(sql, *args)
-        finally:
-            await conn.close()
+        pool = await self._get_pool()
+        return await pool.fetchrow(sql, *args)
 
     async def fetchval(self, sql: str, *args: Any) -> Any:
-        conn = await self._connect()
-        try:
-            return await conn.fetchval(sql, *args)
-        finally:
-            await conn.close()
+        pool = await self._get_pool()
+        return await pool.fetchval(sql, *args)
 
     # ── lifecycle ───────────────────────────────────────────────────────
     async def reset_schema(self) -> None:
         """Drop everything and rebuild from contracts/schema.sql."""
         schema_sql = env.SCHEMA_SQL_PATH.read_text(encoding="utf-8")
-        conn = await self._connect()
-        try:
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
             await conn.execute("DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;")
             await conn.execute(schema_sql)
-        finally:
-            await conn.close()
 
     async def table_names(self) -> list[str]:
         rows = await self.fetch(

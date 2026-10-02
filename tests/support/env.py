@@ -34,8 +34,8 @@ CLERK_WEBHOOK_SIGNING_SECRET = "whsec_dGVzdC13ZWJob29rLXNpZ25pbmctc2VjcmV0LTMyYg
 # CONTRACT.md §2: exp/nbf are checked with 5s leeway.
 CLOCK_LEEWAY_SECONDS = 5
 
-DEFAULT_DATABASE_URL = "postgresql+asyncpg://ridematch:ridematch@localhost:5434/ridematch_test"
-DEFAULT_REDIS_URL = "redis://localhost:6379/15"
+DEFAULT_DATABASE_URL = "postgresql+asyncpg://ridematch:ridematch@127.0.0.1:5434/ridematch_test"
+DEFAULT_REDIS_URL = "redis://127.0.0.1:6379/15"
 
 
 def database_url() -> str:

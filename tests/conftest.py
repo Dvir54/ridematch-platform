@@ -58,7 +58,7 @@ def contract() -> ContractValidator:
 
 # ── database ────────────────────────────────────────────────────────────
 @pytest.fixture(scope="session")
-async def database() -> TestDatabase:
+async def database():
     """A database built from contracts/schema.sql, fresh for the session."""
     db = TestDatabase()
     try:
@@ -68,7 +68,8 @@ async def database() -> TestDatabase:
             f"Cannot reach the test database at {db.dsn}: {exc}. "
             "Is `docker compose up -d` running in ridematch-platform?"
         )
-    return db
+    yield db
+    await db.close()
 
 
 @pytest.fixture
