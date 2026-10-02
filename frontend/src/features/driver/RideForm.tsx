@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { isApiError, messageFor } from '../../api/errors'
+import { messageFor } from '../../api/errors'
+import { collectFieldErrors } from '../../api/fieldErrors'
 import type { Ride, RideCreate, RidePreferences, RideUpdate } from '../../api/types'
 import { useCurrentUser } from '../../auth/currentUserContext'
 import { AddressField } from '../../components/AddressField'
@@ -48,30 +49,6 @@ const FIELD_OWNERS: Record<string, FieldKey> = {
   capacity: 'capacity',
   price_per_seat: 'price',
   notes: 'notes',
-}
-
-/**
- * A 422's `details` turned into errors on the inputs that caused them. Anything
- * with no input of its own — `preferences.pets`, or a detail naming the whole
- * body — comes back in `rest` for the summary, so no reason is ever dropped.
- *
- * Both shapes have to be handled: `field` named only `body` on PATCH until the
- * backend fixed it at 0.4.3, and a form that mapped details to inputs alone would
- * have shown nothing at all in that case.
- */
-function serverErrors(error: unknown): { fields: Errors; rest: string[] } {
-  if (!isApiError(error)) return { fields: {}, rest: [] }
-
-  const fields: Errors = {}
-  const rest: string[] = []
-
-  for (const detail of error.details) {
-    const name = detail.field.replace(/^body\./, '')
-    const owner = FIELD_OWNERS[name]
-    if (owner) fields[owner] ??= detail.message
-    else rest.push(detail.message)
-  }
-  return { fields, rest }
 }
 
 function initialValues(ride: Ride | undefined): Values {
@@ -243,7 +220,9 @@ export function RideForm({
   // sitting in the mutation describes a body we are no longer sending. Showing both
   // at once would put two contradictory reasons on one input.
   const blockedHere = Object.keys(errors).length > 0
-  const fromServer = blockedHere ? { fields: {}, rest: [] } : serverErrors(error)
+  const fromServer = blockedHere
+    ? { fields: {}, rest: [] }
+    : collectFieldErrors(error, FIELD_OWNERS)
   const shown: Errors = blockedHere ? errors : fromServer.fields
 
   return (

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { isApiError, messageFor } from '../../api/errors'
+import { collectFieldErrors } from '../../api/fieldErrors'
 import { useCreateRequest, useMyRequestOnRide } from '../../api/hooks/requests'
 import type { Ride, RideRequest } from '../../api/types'
 import { useCurrentUser } from '../../auth/currentUserContext'
@@ -22,6 +23,10 @@ function RequestSeats({ ride }: { ride: Ride }) {
   const [seats, setSeats] = useState(1)
   const createRequest = useCreateRequest(ride.id)
   const error = createRequest.error
+  // `seats_requested` is the only field in this body, and the select only offers
+  // values the ride can take — so a 422 here means the server knows something the
+  // screen does not, and its words matter more than usual.
+  const fromServer = collectFieldErrors(error, { seats_requested: 'seats' } as const)
 
   // A driver's rejection is final for this ride, so stop offering the button.
   const refused = isApiError(error) && error.is('PREVIOUSLY_REJECTED')
@@ -42,12 +47,22 @@ function RequestSeats({ ride }: { ride: Ride }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {error ? <ErrorNotice>{messageFor(error)}</ErrorNotice> : null}
+      {error ? (
+        <ErrorNotice>
+          {messageFor(error)}
+          {fromServer.rest.map((message) => (
+            <span key={message} className="mt-1 block font-normal">
+              {message}
+            </span>
+          ))}
+        </ErrorNotice>
+      ) : null}
 
       {choices.length > 1 ? (
         <SelectField
           label="How many seats"
           value={seats}
+          error={fromServer.fields.seats}
           onChange={(event) => setSeats(Number(event.target.value))}
         >
           {choices.map((count) => (
