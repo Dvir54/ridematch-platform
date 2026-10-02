@@ -26,6 +26,10 @@ CLERK_AUTHORIZED_PARTIES = CLERK_AUTHORIZED_PARTY
 ADMIN_EMAIL = "first-admin@ridematch.test"
 SEARCH_RADIUS_KM = 10.0
 MATCH_MIN_SCORE = 40.0
+CLERK_SECRET_KEY = "sk_test_not_a_real_clerk_key"
+# The part after "whsec_" must be valid base64 (app/modules/webhooks/service.py
+# base64-decodes it to get the HMAC key) - this is base64("test-webhook-signing-secret-32b").
+CLERK_WEBHOOK_SIGNING_SECRET = "whsec_dGVzdC13ZWJob29rLXNpZ25pbmctc2VjcmV0LTMyYg=="
 
 # CONTRACT.md §2: exp/nbf are checked with 5s leeway.
 CLOCK_LEEWAY_SECONDS = 5
@@ -84,8 +88,8 @@ def apply(clerk_public_key_pem: str) -> None:
             "CLERK_JWKS_URL": "",
             "CLERK_ISSUER": CLERK_ISSUER,
             "CLERK_AUTHORIZED_PARTIES": CLERK_AUTHORIZED_PARTIES,
-            "CLERK_SECRET_KEY": "sk_test_not_a_real_clerk_key",
-            "CLERK_WEBHOOK_SIGNING_SECRET": "whsec_test_not_a_real_secret",
+            "CLERK_SECRET_KEY": CLERK_SECRET_KEY,
+            "CLERK_WEBHOOK_SIGNING_SECRET": CLERK_WEBHOOK_SIGNING_SECRET,
             "SEARCH_RADIUS_KM": str(SEARCH_RADIUS_KM),
             "MATCH_MIN_SCORE": str(MATCH_MIN_SCORE),
             "EMAIL_BACKEND": "memory",
