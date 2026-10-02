@@ -22,9 +22,10 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
+from app.modules.users.models import User
 
 RIDE_STATUSES = ("upcoming", "full", "in_progress", "completed", "cancelled")
 # Statuses a driver's ride still occupies a seat plan for (CONTRACT.md §3).
@@ -75,3 +76,7 @@ class Ride(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+    # `selectin`, not the default lazy load: every read of a ride needs its driver (the `Ride`
+    # schema embeds `UserPublic`), and a lazy load inside async code would raise.
+    driver: Mapped[User] = relationship(lazy="selectin")

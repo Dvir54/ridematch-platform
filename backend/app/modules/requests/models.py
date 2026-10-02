@@ -13,9 +13,11 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
+from app.modules.rides.models import Ride
+from app.modules.users.models import User
 
 REQUEST_STATUSES = ("pending", "approved", "rejected", "cancelled")
 # Statuses that block a second request from the same passenger (CONTRACT.md §8, D2).
@@ -56,3 +58,7 @@ class RideRequest(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # Both are always needed: the `RideRequest` schema embeds the full ride and the passenger.
+    ride: Mapped[Ride] = relationship(lazy="selectin")
+    passenger: Mapped[User] = relationship(lazy="selectin")

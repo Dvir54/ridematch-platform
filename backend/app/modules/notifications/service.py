@@ -22,6 +22,12 @@ class EmailContent:
     body: str
 
 
+def email_enabled(preferences: dict | None) -> bool:
+    """`preferences.notifications.email`, defaulting to on. A plain dict, so no module above
+    this one has to be imported here."""
+    return bool((preferences or {}).get("notifications", {}).get("email", True))
+
+
 async def create_notification(
     db: AsyncSession,
     *,

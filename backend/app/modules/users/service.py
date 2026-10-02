@@ -51,9 +51,8 @@ def merge_preferences(stored: dict[str, Any] | None, patch: UserPreferencesPatch
     incoming = patch.model_dump(mode="json", exclude_unset=True)
     notifications = incoming.pop("notifications", None)
     if isinstance(notifications, dict):
-        merged["notifications"].update(
-            {key: value for key, value in notifications.items() if value is not None}
-        )
+        # All three keys are non-nullable booleans, so what was sent is what should land.
+        merged["notifications"].update(notifications)
     for key, value in incoming.items():
         if value is not None or key in NULLABLE_PREFERENCE_KEYS:
             merged[key] = value
@@ -183,13 +182,13 @@ async def update_user(
 ) -> User:
     """Apply a PATCH /users/me body. `open_rides` gates removing the vehicle."""
     sent = data.model_fields_set
-    if "name" in sent and data.name is not None:
+    if data.name is not None:
         user.name = data.name
     if "phone" in sent:
         user.phone = data.phone
     if "gender" in sent:
         user.gender = data.gender.value if data.gender else None
-    if "preferences" in sent and data.preferences is not None:
+    if data.preferences is not None:
         user.preferences = merge_preferences(user.preferences, data.preferences)
     if "vehicle" in sent:
         if data.vehicle is None:
