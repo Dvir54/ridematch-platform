@@ -17,7 +17,7 @@ import logging
 from collections.abc import Sequence
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Query, Request, WebSocket, WebSocketDisconnect
 from redis.asyncio import Redis
 from sqlalchemy import select
 
@@ -99,6 +99,12 @@ class WsRegistry:
             except Exception:
                 logger.debug("Socket of user %s was already closed", user_id)
 
+
+def get_ws_registry(request: Request) -> WsRegistry:
+    return request.app.state.ws_registry
+
+
+WsRegistryDep = Annotated[WsRegistry, Depends(get_ws_registry)]
 
 router = APIRouter()
 

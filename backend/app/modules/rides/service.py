@@ -125,6 +125,16 @@ class RideViewer:
         return mine is not None and mine.status == "approved"
 
 
+def admin_viewer() -> RideViewer:
+    """No identity of its own, so `my_request` is always `None` and the plate always hidden.
+
+    For `/admin/*` views: the contract names only the driver and approved passengers as allowed
+    to see the plate (CONTRACT.md §4 Vehicles), admin included neither way — `user_id=0` never
+    matches a real `driver_id` (ids start at 1).
+    """
+    return RideViewer(user_id=0, my_requests={})
+
+
 async def viewer_for(db: AsyncSession, rides: Sequence[Ride], user: User) -> RideViewer:
     """Resolve one caller's view of these rides in a single query.
 
@@ -351,6 +361,43 @@ async def cancel_ride(
 
     for request in affected:
         await _notify_ride_cancelled(db, settings, ride, request, now)
+    await notifications_service.commit_and_push(db)
+    return ride
+
+
+async def admin_force_cancel(
+    db: AsyncSession, settings: Settings, *, ride_id: int, reason: str, now: datetime
+) -> Ride:
+    """Admin cancel: any non-terminal ride, `in_progress` included.
+
+    Same side effects as the driver's own cancel, plus a `ride_cancelled` notification to the
+    driver (CONTRACT.md §7, `/admin/rides/{id}/force-cancel`).
+    """
+    await lock_ride(db, ride_id)
+    ride = await get_ride_or_404(db, ride_id)
+    if ride.status in ("completed", "cancelled"):
+        raise Conflict("INVALID_STATE_TRANSITION", f"A {ride.status} ride can't be cancelled.")
+
+    affected = await _requests_in(db, ride.id, ACTIVE_REQUEST_STATUSES)
+    for request in affected:
+        request.status = "cancelled"
+        request.responded_at = now
+    ride.status = "cancelled"
+    ride.available_seats = ride.capacity
+    ride.updated_at = now
+
+    for request in affected:
+        await _notify_ride_cancelled(db, settings, ride, request, now)
+    await _notify_ride_event(
+        db,
+        settings,
+        ride,
+        ride.driver,
+        type="ride_cancelled",
+        title="Ride cancelled",
+        message=f"An admin cancelled your ride {describe_ride(ride)}. Reason: {reason}",
+        now=now,
+    )
     await notifications_service.commit_and_push(db)
     return ride
 

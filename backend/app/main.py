@@ -19,12 +19,14 @@ from app.db import create_engine, create_sessionmaker
 from app.errors import install_error_handlers
 from app.health import router as health_router
 from app.jobs import jobs_loop
+from app.modules.admin.router import router as admin_router
 from app.modules.feedback.router import router as feedback_router
 from app.modules.notifications.router import router as notifications_router
 from app.modules.requests.router import router as requests_router
 from app.modules.rides.router import router as rides_router
 from app.modules.search.router import router as search_router
 from app.modules.users.router import router as users_router
+from app.modules.webhooks.router import router as webhooks_router
 from app.redis_client import create_redis
 from app.ws import WsRegistry
 from app.ws import router as ws_router
@@ -37,6 +39,8 @@ ROUTERS = (
     search_router,
     feedback_router,
     notifications_router,
+    admin_router,
+    webhooks_router,
     ws_router,
 )
 
