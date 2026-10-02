@@ -17,9 +17,10 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
+from app.modules.users.models import User
 
 ROLES_RATED = ("driver", "passenger")
 
@@ -47,3 +48,7 @@ class Rating(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+    # `selectin`, like `Ride.driver`: the `Rating` schema embeds the rater as `UserPublic`, and a
+    # lazy load inside async code would raise.
+    from_user: Mapped[User] = relationship(lazy="selectin", foreign_keys=[from_user_id])

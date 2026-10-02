@@ -19,6 +19,7 @@ from app.db import create_engine, create_sessionmaker
 from app.errors import install_error_handlers
 from app.health import router as health_router
 from app.jobs import jobs_loop
+from app.modules.feedback.router import router as feedback_router
 from app.modules.notifications.router import router as notifications_router
 from app.modules.requests.router import router as requests_router
 from app.modules.rides.router import router as rides_router
@@ -34,6 +35,7 @@ ROUTERS = (
     rides_router,
     requests_router,
     search_router,
+    feedback_router,
     notifications_router,
     ws_router,
 )
