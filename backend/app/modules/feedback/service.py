@@ -276,7 +276,7 @@ async def create_rating(
         role_rated=ratee_role,
         score=data.score,
         comment=data.comment,
-        tags=data.unique_tags(),
+        tags=data.tags,
         created_at=now,
     )
     db.add(rating)

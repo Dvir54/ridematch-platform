@@ -2,7 +2,7 @@
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.modules.rides.schemas import RideOut
 from app.modules.users.schemas import UserPublic
@@ -23,9 +23,15 @@ class RatingCreate(BaseModel):
     comment: Annotated[str | None, Field(max_length=1000)] = None
     tags: Tags = []
 
-    def unique_tags(self) -> list[str]:
-        """openapi.yaml marks `tags` `uniqueItems`; order is kept, duplicates dropped."""
-        return list(dict.fromkeys(self.tags))
+    @field_validator("tags")
+    @classmethod
+    def _unique(cls, value: list[str]) -> list[str]:
+        """openapi.yaml marks `tags` `uniqueItems`, so a repeat is invalid input, not something
+        to quietly clean up — silently deduplicating would hide a client bug behind a 201."""
+        duplicates = sorted({tag for tag in value if value.count(tag) > 1})
+        if duplicates:
+            raise ValueError(f"must not repeat a tag: {', '.join(duplicates)}")
+        return value
 
 
 class RatingOut(ApiModel):
