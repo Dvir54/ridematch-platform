@@ -21,3 +21,10 @@ async def test_health_ignores_a_broken_token(client, users) -> None:
     """An unauthenticated endpoint must not start failing because of a bad header."""
     response = await client.get("/health", headers={"Authorization": "Bearer not-a-jwt"})
     expect_status(response, 200)
+
+
+async def test_every_response_carries_a_request_id(client) -> None:
+    generated = await client.get("/health")
+    assert generated.headers["x-request-id"]
+    echoed = await client.get("/health", headers={"X-Request-ID": "trace-me"})
+    assert echoed.headers["x-request-id"] == "trace-me"

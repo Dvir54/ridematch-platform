@@ -5,7 +5,6 @@ database without touching the process environment.
 """
 
 import asyncio
-import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
 
@@ -19,6 +18,7 @@ from app.db import create_engine, create_sessionmaker
 from app.errors import install_error_handlers
 from app.health import router as health_router
 from app.jobs import jobs_loop
+from app.logging_setup import RequestLogMiddleware, configure_logging
 from app.modules.admin.router import router as admin_router
 from app.modules.feedback.router import router as feedback_router
 from app.modules.notifications.router import router as notifications_router
@@ -47,10 +47,7 @@ ROUTERS = (
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
-    logging.basicConfig(
-        level=settings.log_level.upper(),
-        format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
-    )
+    configure_logging(settings.log_level, json_logs=settings.app_env == "production")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
@@ -96,6 +93,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             expose_headers=["X-Total-Count"],
         )
 
+    app.add_middleware(RequestLogMiddleware)
     install_error_handlers(app)
     for router in ROUTERS:
         app.include_router(router, prefix=settings.api_prefix)
