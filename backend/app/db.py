@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase
 
 from app.config import Settings
+from app.ws_push import PUSHER_KEY
 
 
 class Base(DeclarativeBase):
@@ -32,6 +33,11 @@ def create_sessionmaker(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]
 async def get_db(request: Request) -> AsyncGenerator[AsyncSession]:
     sessionmaker: async_sessionmaker[AsyncSession] = request.app.state.sessionmaker
     async with sessionmaker() as session:
+        # Where `commit_and_push` finds the sender for what the transaction queued. Duck-typed
+        # on purpose: `app.ws` imports the models, so importing it here would be a cycle.
+        registry = getattr(request.app.state, "ws_registry", None)
+        if registry is not None:
+            session.info[PUSHER_KEY] = registry.push
         try:
             yield session
         except Exception:

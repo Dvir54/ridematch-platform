@@ -166,9 +166,10 @@ async def onboard_user(
         title="Welcome to RideMatch",
         message="Your profile is ready. Offer a ride, or find one.",
         email=_welcome_email(user) if wants_email else None,
+        push=notifications_service.websocket_enabled(preferences),
         now=now,
     )
-    await db.commit()
+    await notifications_service.commit_and_push(db)
     return user
 
 

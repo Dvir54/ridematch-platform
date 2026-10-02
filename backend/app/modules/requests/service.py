@@ -124,15 +124,17 @@ async def _notify_driver(
     message: str,
     now: datetime,
 ) -> None:
+    driver = request.ride.driver
     await notifications_service.notify(
         db,
         settings,
-        user_id=request.ride.driver_id,
+        user_id=driver.id,
         type=type,
         title=title,
         message=message,
         related_entity_type="ride_request",
         related_entity_id=request.id,
+        push=notifications_service.websocket_enabled(driver.preferences),
         now=now,
     )
 
@@ -169,6 +171,7 @@ async def _notify_passenger(
         related_entity_type="ride_request",
         related_entity_id=request.id,
         email=email,
+        push=notifications_service.websocket_enabled(passenger.preferences),
         now=now,
     )
 
@@ -238,7 +241,7 @@ async def create_request(
         ),
         now=now,
     )
-    await db.commit()
+    await notifications_service.commit_and_push(db)
     return await get_request_or_404(db, request.id)
 
 
@@ -281,7 +284,7 @@ async def approve_request(
         subject="Your RideMatch seat is confirmed",
         now=now,
     )
-    await db.commit()
+    await notifications_service.commit_and_push(db)
     return request
 
 
@@ -305,7 +308,7 @@ async def reject_request(
         subject="Your RideMatch request was declined",
         now=now,
     )
-    await db.commit()
+    await notifications_service.commit_and_push(db)
     return request
 
 
@@ -355,5 +358,5 @@ async def cancel_request(
         ),
         now=now,
     )
-    await db.commit()
+    await notifications_service.commit_and_push(db)
     return request

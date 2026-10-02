@@ -4,9 +4,10 @@
 database without touching the process environment.
 """
 
+import asyncio
 import logging
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,13 +18,25 @@ from app.config import Settings, get_settings
 from app.db import create_engine, create_sessionmaker
 from app.errors import install_error_handlers
 from app.health import router as health_router
+from app.jobs import jobs_loop
+from app.modules.notifications.router import router as notifications_router
 from app.modules.requests.router import router as requests_router
 from app.modules.rides.router import router as rides_router
 from app.modules.search.router import router as search_router
 from app.modules.users.router import router as users_router
 from app.redis_client import create_redis
+from app.ws import WsRegistry
+from app.ws import router as ws_router
 
-ROUTERS = (health_router, users_router, rides_router, requests_router, search_router)
+ROUTERS = (
+    health_router,
+    users_router,
+    rides_router,
+    requests_router,
+    search_router,
+    notifications_router,
+    ws_router,
+)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -35,9 +48,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-        yield
-        await app.state.engine.dispose()
-        await app.state.redis.aclose()
+        # The background jobs run in this process (CONTRACT.md §7); tests set JOBS_ENABLED=false
+        # and call the passes directly with their own `now`.
+        jobs_task = asyncio.create_task(jobs_loop(app)) if settings.jobs_enabled else None
+        try:
+            yield
+        finally:
+            if jobs_task is not None:
+                jobs_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await jobs_task
+            await app.state.engine.dispose()
+            await app.state.redis.aclose()
 
     app = FastAPI(
         title="RideMatch API",
@@ -55,6 +77,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.engine = engine
     app.state.sessionmaker = create_sessionmaker(engine)
     app.state.redis = create_redis(settings)
+    app.state.ws_registry = WsRegistry(app.state.redis)
     app.state.clerk_verifier = ClerkVerifier(settings)
 
     if settings.cors_origins:
