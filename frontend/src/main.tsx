@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
 import { App } from './App'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { createQueryClient } from './api/queryClient'
 import { AuthProvider } from './auth/AuthProvider'
 import { startMocks } from './mocks/start'
@@ -17,13 +18,15 @@ const queryClient = createQueryClient()
 void startMocks().then(() => {
   createRoot(container).render(
     <StrictMode>
-      <BrowserRouter>
-        <AuthProvider>
-          <QueryClientProvider client={queryClient}>
-            <App />
-          </QueryClientProvider>
-        </AuthProvider>
-      </BrowserRouter>
+      <ErrorBoundary>
+        <BrowserRouter>
+          <AuthProvider>
+            <QueryClientProvider client={queryClient}>
+              <App />
+            </QueryClientProvider>
+          </AuthProvider>
+        </BrowserRouter>
+      </ErrorBoundary>
     </StrictMode>,
   )
 })
