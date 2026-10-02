@@ -15,11 +15,13 @@ import asyncio
 import json
 import logging
 from collections.abc import Sequence
+from contextlib import suppress
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Query, Request, WebSocket, WebSocketDisconnect
 from redis.asyncio import Redis
 from sqlalchemy import select
+from starlette.websockets import WebSocketDisconnected
 
 from app.errors import AppError
 from app.modules.users.models import User
@@ -100,6 +102,12 @@ class WsRegistry:
                 logger.debug("Socket of user %s was already closed", user_id)
 
 
+def get_ws_registry(request: Request) -> WsRegistry:
+    return request.app.state.ws_registry
+
+
+WsRegistryDep = Annotated[WsRegistry, Depends(get_ws_registry)]
+
 router = APIRouter()
 
 
@@ -146,7 +154,12 @@ async def notifications_socket(
             try:
                 raw = await asyncio.wait_for(websocket.receive_text(), timeout=PING_TIMEOUT_SECONDS)
             except TimeoutError:
-                await websocket.close(code=1000, reason="No ping.")
+                # The socket may already be gone by now — e.g. an admin deactivated this user
+                # and `WsRegistry.close_user` closed it from the other side (CONTRACT.md §6) —
+                # in which case `close()` itself raises `WebSocketDisconnected`, not something
+                # worth propagating as an unhandled error.
+                with suppress(WebSocketDisconnect, WebSocketDisconnected):
+                    await websocket.close(code=1000, reason="No ping.")
                 return
             try:
                 payload = json.loads(raw)
@@ -154,7 +167,10 @@ async def notifications_socket(
                 continue
             if isinstance(payload, dict) and payload.get("event") == "ping":
                 await websocket.send_json({"event": "pong"})
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, WebSocketDisconnected):
+        # `WebSocketDisconnect`: the client went away. `WebSocketDisconnected`: `receive()` was
+        # called again after a disconnect was already observed — e.g. the client's own close
+        # racing a server-initiated one (`WsRegistry.close_user`) — functionally the same thing.
         pass
     finally:
         await registry.unregister(user.id, websocket)

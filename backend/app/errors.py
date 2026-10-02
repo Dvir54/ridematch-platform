@@ -44,6 +44,12 @@ class AppError(Exception):
         return payload
 
 
+class BadRequest(AppError):
+    status_code = 400
+    default_code = "INVALID_WEBHOOK_SIGNATURE"
+    default_message = "Missing or invalid webhook signature."
+
+
 class Unauthenticated(AppError):
     status_code = 401
     default_code = "UNAUTHENTICATED"
@@ -78,6 +84,7 @@ class UnprocessableEntity(AppError):
 
 # HTTP statuses FastAPI/Starlette may raise on their own (unknown route, bad method, …).
 _HTTP_STATUS_CODES = {
+    400: "BAD_REQUEST",
     401: "UNAUTHENTICATED",
     403: "FORBIDDEN",
     404: "NOT_FOUND",
