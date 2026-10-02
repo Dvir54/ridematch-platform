@@ -186,7 +186,8 @@ export interface paths {
          * Driver only, status must be `upcoming` or `full`. If the ride has approved passengers,
          *     location/departure_time changes → 409 RIDE_HAS_APPROVED_PASSENGERS, and capacity may not drop
          *     below approved seats → 409 CAPACITY_BELOW_APPROVED. Changing capacity recomputes available_seats
-         *     and status (full ↔ upcoming).
+         *     and status (full ↔ upcoming). Sending a locked field counts as a change even if the value is
+         *     unchanged. A new departure_time must still be in the future (422 DEPARTURE_IN_PAST).
          */
         patch: operations["updateRide"];
         trace?: never;
@@ -202,7 +203,8 @@ export interface paths {
         put?: never;
         /**
          * Driver only, from `upcoming` or `full`. Sets status=cancelled, all pending/approved requests →
-         *     cancelled, notifies approved passengers (ride_cancelled) and pending requesters.
+         *     cancelled, notifies approved passengers (ride_cancelled) and pending requesters. No approved
+         *     request is left, so available_seats goes back to capacity.
          */
         post: operations["cancelRide"];
         delete?: never;
@@ -256,10 +258,11 @@ export interface paths {
         get: operations["listRideRequests"];
         put?: never;
         /**
-         * Passenger requests seats. Rejected with 409 if: caller is the driver (CANNOT_REQUEST_OWN_RIDE),
-         *     ride not `upcoming` (RIDE_NOT_OPEN), not enough seats (NOT_ENOUGH_SEATS), caller already has
-         *     a pending/approved request on this ride (REQUEST_ALREADY_EXISTS), or the driver already rejected
-         *     the caller on this ride (PREVIOUSLY_REJECTED). Re-requesting after the caller's own cancel is allowed.
+         * Passenger requests seats. Rejected with 409, checked in this order: caller is the driver
+         *     (CANNOT_REQUEST_OWN_RIDE), ride not `upcoming` (RIDE_NOT_OPEN), not enough seats
+         *     (NOT_ENOUGH_SEATS), caller already has a pending/approved request on this ride
+         *     (REQUEST_ALREADY_EXISTS), or the driver already rejected the caller on this ride
+         *     (PREVIOUSLY_REJECTED). Re-requesting after the caller's own cancel is allowed.
          *     Notifies driver (request_created).
          */
         post: operations["createRequest"];
@@ -330,9 +333,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Driver only, request must be `pending`, ride `upcoming`. Decrements available_seats by
-         *     seats_requested under a row lock (409 NOT_ENOUGH_SEATS otherwise); ride → `full` at 0.
-         *     Notifies passenger (request_approved + email).
+         * Driver only, request must be `pending`, ride still `upcoming` or `full`. Decrements
+         *     available_seats by seats_requested under a row lock; ride → `full` at 0. A ride that is
+         *     `in_progress` or terminal → 409 INVALID_STATE_TRANSITION, and no free seat (a `full` ride
+         *     included) → 409 NOT_ENOUGH_SEATS. Notifies passenger (request_approved + email).
          */
         post: operations["approveRequest"];
         delete?: never;
@@ -368,7 +372,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Passenger only. `pending` → cancelled any time before the ride starts.
+         * Passenger only, and the ride must still be `upcoming` or `full` — once it is `in_progress`
+         *     or over, 409 INVALID_STATE_TRANSITION. `pending` → cancelled any time while the ride is open.
          *     `approved` → cancelled only until departure_time − 1h (409 TOO_LATE_TO_CANCEL after that);
          *     the seats go back to the ride (full → upcoming if it was full). Notifies driver (request_cancelled).
          */
@@ -633,7 +638,15 @@ export interface components {
             code: string;
             /** @description Human-readable, not for parsing */
             message: string;
-            /** @description For VALIDATION_ERROR — list of field errors */
+            /**
+             * @description Present on **every** 422, whatever its `code` — UNDERAGE, TERMS_NOT_ACCEPTED and
+             *     DEPARTURE_IN_PAST carry it as well as VALIDATION_ERROR — with at least one entry.
+             *     For display: `code` gives you the sentence, `field` gives you where to put it.
+             *     `field` names the most
+             *     specific location the server can attribute the failure to, and a later version may
+             *     make it *more* specific without that being breaking: branch on `code`, use `field`
+             *     to point at an input, and keep a fallback for a `field` you can't place onto one.
+             */
             details?: {
                 /** @example body.departure_time */
                 field: string;
@@ -643,7 +656,9 @@ export interface components {
         Latitude: number;
         Longitude: number;
         /**
-         * @description Decimal as string, e.g. "25.50" (never a float)
+         * @description Decimal as string, e.g. "25.50" (never a float). Being a `string` is the point: a JSON
+         *     number in a request body is 422 VALIDATION_ERROR, whether or not it would round-trip.
+         *     1 or 2 decimal places on the way in, or none; always 2 on the way out.
          * @example 25.50
          */
         Money: string;
@@ -903,6 +918,13 @@ export interface components {
             preferences?: components["schemas"]["RidePreferencesPatch"];
             notes?: string | null;
         };
+        /** @description The caller's own request on a ride, as carried by Ride.my_request. */
+        MyRequest: {
+            /** @description The id to use for POST /requests/{request_id}/cancel */
+            id: number;
+            status: components["schemas"]["RequestStatus"];
+            seats_requested: number;
+        };
         Ride: {
             id: number;
             driver: components["schemas"]["UserPublic"];
@@ -922,6 +944,15 @@ export interface components {
             notes?: string | null;
             /** @description Only filled for the driver and for passengers with an approved request on this ride; null for everyone else */
             driver_vehicle_plate?: string | null;
+            /**
+             * @description The caller's own blocking request on this ride - the single pending/approved/rejected
+             *     row allowed per (ride, passenger). Null when the caller never requested it, after
+             *     their own cancel (so the request button comes back - CONTRACT.md D2), and for a
+             *     driver on their own ride. Inside a RideRequest this is the caller's *current* request
+             *     on that ride, which may differ from the row you are holding: in request lists read
+             *     the outer object, which is strictly more informative.
+             */
+            my_request?: components["schemas"]["MyRequest"] | null;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -1239,6 +1270,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
             422: components["responses"]["ValidationError"];
         };
     };
@@ -1371,6 +1403,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationError"];
         };
     };
     getRide: {
@@ -1532,6 +1565,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationError"];
         };
     };
     createRequest: {
@@ -1590,6 +1624,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationError"];
         };
     };
     listIncomingRequests: {
@@ -1614,6 +1649,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationError"];
         };
     };
     getRequest: {

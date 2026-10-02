@@ -1,4 +1,4 @@
-import type { Ride, RideRequest, UserMe, UserPublic } from '../api/types'
+import type { MyRequest, Ride, RideRequest, UserMe, UserPublic } from '../api/types'
 import type { RequestRow, RideRow } from './db'
 import { db, findUser } from './db'
 
@@ -47,6 +47,25 @@ function plateFor(row: RideRow, viewerId: number | null): string | null {
   return approved ? plate : null
 }
 
+/**
+ * The caller's own blocking request on this ride (D20): null for the driver's
+ * own ride, after the caller's own cancel, or when they never asked — but a
+ * driver's rejection stays visible, since that is final for the ride (D2).
+ */
+function myRequestFor(row: RideRow, viewerId: number | null): MyRequest | null {
+  if (viewerId === null || viewerId === row.driver_id) return null
+  const request = db.requests.find(
+    (candidate) =>
+      candidate.ride_id === row.id &&
+      candidate.passenger_id === viewerId &&
+      (candidate.status === 'pending' ||
+        candidate.status === 'approved' ||
+        candidate.status === 'rejected'),
+  )
+  if (!request) return null
+  return { id: request.id, status: request.status, seats_requested: request.seats_requested }
+}
+
 export function toRide(row: RideRow, viewerId: number | null): Ride {
   const driver = findUser(row.driver_id)
   return {
@@ -66,6 +85,7 @@ export function toRide(row: RideRow, viewerId: number | null): Ride {
     preferences: { ...row.preferences },
     notes: row.notes,
     driver_vehicle_plate: plateFor(row, viewerId),
+    my_request: myRequestFor(row, viewerId),
     created_at: row.created_at,
     updated_at: row.updated_at,
   }

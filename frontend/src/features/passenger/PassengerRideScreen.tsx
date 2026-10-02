@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { isApiError, messageFor } from '../../api/errors'
 import { collectFieldErrors } from '../../api/fieldErrors'
-import { useCreateRequest, useMyRequestOnRide } from '../../api/hooks/requests'
-import type { Ride, RideRequest } from '../../api/types'
+import { useCreateRequest } from '../../api/hooks/requests'
+import type { MyRequest as MyRequestType, Ride } from '../../api/types'
 import { useCurrentUser } from '../../auth/currentUserContext'
 import { Button, ButtonLink } from '../../components/Button'
 import { SelectField } from '../../components/Field'
@@ -11,7 +11,6 @@ import { PersonLine } from '../../components/PersonLine'
 import { RequestStatusPill } from '../../components/StatusPill'
 import { TabHeader } from '../../components/TabHeader'
 import { ErrorNotice, InlineLoader, LoadFailure, MessageScreen } from '../../components/states'
-import { formatDateTime } from '../../lib/dates'
 import { formatMoneyTotal } from '../../lib/money'
 import { paths } from '../../routes'
 import { RideFacts } from '../rides/RideFacts'
@@ -88,7 +87,7 @@ function RequestSeats({ ride }: { ride: Ride }) {
 }
 
 /** The state of a request the passenger already made on this ride. */
-function MyRequest({ request }: { request: RideRequest }) {
+function MyRequest({ ride, request }: { ride: Ride; request: MyRequestType }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
@@ -96,8 +95,7 @@ function MyRequest({ request }: { request: RideRequest }) {
           You asked for{' '}
           <span className="font-semibold">
             {request.seats_requested === 1 ? '1 seat' : `${request.seats_requested} seats`}
-          </span>{' '}
-          on {formatDateTime(request.requested_at)}
+          </span>
         </p>
         <RequestStatusPill status={request.status} />
       </div>
@@ -118,7 +116,7 @@ function MyRequest({ request }: { request: RideRequest }) {
         </p>
       ) : null}
 
-      <CancelRequestAction request={request} />
+      <CancelRequestAction ride={ride} requestId={request.id} status={request.status} />
     </div>
   )
 }
@@ -126,7 +124,6 @@ function MyRequest({ request }: { request: RideRequest }) {
 export function PassengerRideScreen() {
   const me = useCurrentUser()
   const { rideId, query } = useRouteRide()
-  const mine = useMyRequestOnRide(rideId)
 
   if (rideId === undefined) {
     return (
@@ -166,10 +163,8 @@ export function PassengerRideScreen() {
 
         <section>
           <h2 className="mb-3 text-lg">Your seat</h2>
-          {mine.isPending ? (
-            <InlineLoader label="Checking whether you already asked" />
-          ) : mine.data ? (
-            <MyRequest request={mine.data} />
+          {ride.my_request ? (
+            <MyRequest ride={ride} request={ride.my_request} />
           ) : (
             <RequestSeats ride={ride} />
           )}

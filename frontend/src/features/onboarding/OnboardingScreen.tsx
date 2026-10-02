@@ -12,6 +12,7 @@ import { ErrorNotice, FullScreenLoader } from '../../components/states'
 import { Wordmark } from '../../components/Wordmark'
 import { isAdult, todayAsDateInput } from '../../lib/dates'
 import { isValidPhone, PHONE_HINT } from '../../lib/phone'
+import { validateVehicle } from '../../lib/vehicle'
 
 const GENDERS: { value: Gender; label: string }[] = [
   { value: 'female', label: 'Female' },
@@ -67,10 +68,10 @@ function validate(form: FormState): Errors {
   }
 
   if (form.addVehicle) {
-    if (!form.make.trim()) errors.make = 'Required.'
-    if (!form.model.trim()) errors.model = 'Required.'
-    if (!form.color.trim()) errors.color = 'Required.'
-    if (form.plate.trim().length < 2) errors.plate = 'Enter the plate as it appears on the car.'
+    Object.assign(
+      errors,
+      validateVehicle({ make: form.make, model: form.model, color: form.color, plate: form.plate }),
+    )
   }
 
   if (!form.acceptedTerms) errors.acceptedTerms = 'Accept the terms to continue.'

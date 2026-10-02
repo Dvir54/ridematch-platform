@@ -32,3 +32,14 @@ export function RequestStatusPill({ status }: { status: RequestStatus }) {
   const { label, tone } = REQUEST[status]
   return <span className={`${base} ${tone}`}>{label}</span>
 }
+
+/** A search result's `match_score` (CONTRACT §7), kept ≥ 40 by the server. */
+export function MatchBadge({ score }: { score: number }) {
+  const tone =
+    score >= 70
+      ? 'border-go/40 bg-go/10 text-go'
+      : score >= 55
+        ? 'border-signal-deep/40 bg-signal/15 text-signal-deep'
+        : 'border-ink/25 text-ink'
+  return <span className={`${base} tnum ${tone}`}>{Math.round(score)}% match</span>
+}

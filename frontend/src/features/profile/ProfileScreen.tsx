@@ -2,6 +2,7 @@ import { useClerk } from '@clerk/clerk-react'
 import { useCurrentUser } from '../../auth/currentUserContext'
 import { Button } from '../../components/Button'
 import { TabHeader } from '../../components/TabHeader'
+import { VehicleEditor } from './VehicleEditor'
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -43,10 +44,10 @@ export function ProfileScreen() {
         </dl>
       </section>
 
-      <section className="mt-5 rounded-card border border-hairline bg-surface px-5 py-2">
-        <h2 className="sr-only">Your car</h2>
+      <section className="mt-5 rounded-card border border-hairline bg-surface px-5 py-4">
+        <h2 className="text-sm font-semibold">Your car</h2>
         {user.vehicle ? (
-          <dl>
+          <dl className="mt-2">
             <Row
               label="Car"
               value={`${user.vehicle.color} ${user.vehicle.make} ${user.vehicle.model}`}
@@ -54,10 +55,13 @@ export function ProfileScreen() {
             <Row label="Plate" value={user.vehicle.plate} />
           </dl>
         ) : (
-          <p className="py-3 text-sm text-ink-70">
+          <p className="mt-2 text-sm text-ink-70">
             No car added. You need one on your profile before you can offer a ride.
           </p>
         )}
+        <div className="mt-4">
+          <VehicleEditor vehicle={user.vehicle ?? null} />
+        </div>
       </section>
 
       <div className="mt-8 flex flex-col gap-3">

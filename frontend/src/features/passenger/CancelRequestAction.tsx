@@ -1,18 +1,27 @@
 import { messageFor } from '../../api/errors'
 import { useCancelRequest } from '../../api/hooks/requests'
-import type { RideRequest } from '../../api/types'
+import type { RequestStatus, Ride } from '../../api/types'
 import { ConfirmAction } from '../../components/ConfirmAction'
 import { ErrorNotice } from '../../components/states'
 import { canCancelApprovedYet, formatDateTime } from '../../lib/dates'
+
+export interface CancelRequestActionProps {
+  ride: Ride
+  requestId: number
+  status: RequestStatus
+}
 
 /**
  * Giving a seat back. A pending request can go any time; an approved one locks
  * an hour before departure (D15), so the lock is explained rather than enforced
  * by a button that answers TOO_LATE_TO_CANCEL.
+ *
+ * Takes the ride and request fields apart rather than a `RideRequest`, because
+ * `Ride.my_request` (the Ride Details screen's source) carries only
+ * `{id, status, seats_requested}` — not the full request with its nested ride.
  */
-export function CancelRequestAction({ request }: { request: RideRequest }) {
+export function CancelRequestAction({ ride, requestId, status }: CancelRequestActionProps) {
   const cancel = useCancelRequest()
-  const { status, ride } = request
 
   if (status !== 'pending' && status !== 'approved') return null
 
@@ -47,7 +56,7 @@ export function CancelRequestAction({ request }: { request: RideRequest }) {
         question={question}
         confirmLabel={status === 'approved' ? 'Give up the seat' : 'Withdraw it'}
         pending={cancel.isPending}
-        onConfirm={() => cancel.mutate(request.id)}
+        onConfirm={() => cancel.mutate(requestId)}
       />
     </div>
   )
