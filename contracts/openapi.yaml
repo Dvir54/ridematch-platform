@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: RideMatch API
-  version: 0.4.5
+  version: 0.4.6
   description: |
     Contract for the RideMatch monolith (FastAPI). Source of truth for backend, frontend and tests.
     See CONTRACT.md for conventions, state machines, business rules, error codes and the WebSocket protocol.
@@ -918,7 +918,10 @@ components:
           description: Human-readable, not for parsing
         details:
           description: |
-            For VALIDATION_ERROR — list of field errors, for display. `field` names the most
+            Present on **every** 422, whatever its `code` — UNDERAGE, TERMS_NOT_ACCEPTED and
+            DEPARTURE_IN_PAST carry it as well as VALIDATION_ERROR — with at least one entry.
+            For display: `code` gives you the sentence, `field` gives you where to put it.
+            `field` names the most
             specific location the server can attribute the failure to, and a later version may
             make it *more* specific without that being breaking: branch on `code`, use `field`
             to point at an input, and keep a fallback for a `field` you can't place onto one.
