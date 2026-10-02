@@ -236,15 +236,6 @@ class TestForceCancel:
         )
         assert body["available_seats"] == body["capacity"]
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "FAIL reported to @backend: POST /admin/rides/{ride_id}/force-cancel's "
-            "ForceCancelRequest requires `reason` (minLength 1), so a missing/empty "
-            "reason 422s, but openapi.yaml documents only 200/401/403/404/409 for this "
-            "operation - no 422."
-        ),
-    )
     async def test_reason_is_required(self, client, admin, offer) -> None:
         expect_validation_error(
             await client.post(
