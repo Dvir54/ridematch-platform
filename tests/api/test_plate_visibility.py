@@ -156,18 +156,6 @@ class TestVehicleRemovalWithOpenRides:
     `upcoming`/`full` rides (409 VEHICLE_REQUIRED)". Deferred here from Phase 1,
     which had no rides to open."""
 
-    # openapi.yaml lists only 200/401/403/422 under PATCH /users/me, so the
-    # schema check in expect_error refuses the 409 the backend (correctly) sends.
-    # Reported to @backend 2026-10-01; additive fix, then these two go green.
-    UNDOCUMENTED_409 = pytest.mark.xfail(
-        reason="FAIL reported to @backend 2026-10-01: PATCH /users/me answers 409 "
-        "VEHICLE_REQUIRED as CONTRACT.md §4 requires, but openapi.yaml documents no 409 for that "
-        "operation (only 200/401/403/422), even though UserUpdate.vehicle's own description names "
-        "the code. Please add the Conflict response.",
-        strict=True,
-    )
-
-    @UNDOCUMENTED_409
     async def test_an_upcoming_ride_blocks_removal(self, client, rides, driver) -> None:
         await rides.offer(driver)
         response = await client.patch("/users/me", json={"vehicle": None}, headers=driver.headers)
@@ -178,7 +166,6 @@ class TestVehicleRemovalWithOpenRides:
             == DEFAULT_VEHICLE
         )
 
-    @UNDOCUMENTED_409
     async def test_a_full_ride_blocks_removal(
         self, client, rides, requests, driver, passenger
     ) -> None:

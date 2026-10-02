@@ -74,12 +74,12 @@ never by writing SQL - a `full` ride is one whose seats were taken by an approve
 request, so a test that uses it also exercises the endpoint that produces it.
 
 ```python
-offer = await rides.offer(driver, capacity=2, departure_in=24)   # hours from now
+offer = await rides.offer(driver, capacity=2, departure_in=24)  # hours from now
 request = await requests.create(offer, passenger, seats=2)
-await requests.approve(request, offer.driver)                    # raw response
-approved = await requests.approved(offer, passenger)             # asserts the 200
+await requests.approve(request, offer.driver)  # raw response
+approved = await requests.approved(offer, passenger)  # asserts the 200
 offer = await ride_in_status("in_progress", rides=rides, requests=requests, users=users)
-await assert_seat_invariant(db, offer.id)                        # CONTRACT.md §4
+await assert_seat_invariant(db, offer.id)  # CONTRACT.md §4
 ```
 
 Time is controlled with relative departure times - no sleeps, no frozen clock.

@@ -66,6 +66,22 @@ class TestCreate:
         for field in ("departure_time", "created_at", "updated_at"):
             assert body[field].endswith("Z"), f"CONTRACT.md §2: {field} must be UTC with Z"
 
+    async def test_timestamps_are_second_resolution(self, rides, driver) -> None:
+        """CONTRACT.md §2 (0.4.3): UTC `Z` at **second** resolution, microseconds
+        dropped. Pinned because the suite sends whole seconds and compares."""
+        sent = clock.iso(clock.in_hours(24).replace(microsecond=123456))
+        body = expect_status(await rides.create_response(driver, departure_time=sent), 201)
+        for field in ("departure_time", "created_at", "updated_at"):
+            assert clock.parse(body[field]).microsecond == 0, f"{field} kept microseconds"
+        assert clock.parse(body["departure_time"]) == clock.parse(sent).replace(microsecond=0)
+
+    async def test_a_naive_departure_time_is_read_as_utc(self, rides, driver) -> None:
+        """§2 (0.4.3): "a naive datetime is read as UTC"."""
+        naive = clock.whole_seconds(clock.in_hours(24)).replace(tzinfo=None).isoformat()
+        assert not naive.endswith("Z") and "+" not in naive
+        body = expect_status(await rides.create_response(driver, departure_time=naive), 201)
+        assert clock.parse(body["departure_time"]) == clock.parse(naive + "Z")
+
     async def test_an_offset_departure_time_is_accepted_and_normalised(self, rides, driver) -> None:
         """CONTRACT.md §2: the server accepts any offset and answers in UTC."""
         as_offset = clock.iso_at_offset(clock.in_hours(24), 2)
@@ -149,21 +165,35 @@ class TestCreateValidation:
     async def test_coordinates_outside_the_world(self, rides, driver, field, value) -> None:
         expect_validation_error(await rides.create_response(driver, **{field: value}), field=field)
 
-    @pytest.mark.parametrize("price", [-1, "-1.00", "abc", "", "12.345", None])
+    @pytest.mark.parametrize("price", [-1, "-1.00", "abc", "", None])
     async def test_a_price_that_is_not_money(self, rides, driver, price) -> None:
         """CONTRACT.md §2: money is a decimal **string**, never a float."""
         expect_validation_error(
             await rides.create_response(driver, price_per_seat=price), field="price_per_seat"
         )
 
-    @pytest.mark.xfail(
-        reason="FAIL reported to @backend 2026-10-01: a JSON number is accepted for "
-        "price_per_seat. openapi Money is `type: string`; CONTRACT.md §2 says "
-        "money is a decimal string, 'Never a float'.",
-        strict=True,
+    @pytest.mark.parametrize("price", [25.5, 25, 0, True])
+    async def test_a_json_number_is_not_money(self, rides, driver, price) -> None:
+        """CONTRACT.md §2 (0.4.3): "a JSON number in a request body is a 422
+        VALIDATION_ERROR, since that's what typing it as a string is for" - even
+        one that would round-trip cleanly."""
+        expect_validation_error(
+            await rides.create_response(driver, price_per_seat=price), field="price_per_seat"
+        )
+
+    @pytest.mark.parametrize(
+        ("sent", "returned"), [("25", "25.00"), ("25.5", "25.50"), ("25.50", "25.50")]
     )
-    @pytest.mark.parametrize("price", [25.5, 25, 0])
-    async def test_a_float_price_is_not_money(self, rides, driver, price) -> None:
+    async def test_one_or_two_places_in_two_places_out(
+        self, rides, driver, sent: str, returned: str
+    ) -> None:
+        """§2: "On the way in, 1 or 2 decimal places or none ...; on the way out,
+        always 2"."""
+        body = expect_status(await rides.create_response(driver, price_per_seat=sent), 201)
+        assert body["price_per_seat"] == returned
+
+    @pytest.mark.parametrize("price", ["1.234", "0.001"])
+    async def test_more_than_two_places_is_rejected(self, rides, driver, price: str) -> None:
         expect_validation_error(
             await rides.create_response(driver, price_per_seat=price), field="price_per_seat"
         )
@@ -296,6 +326,18 @@ class TestMine:
         offer = await rides.offer(driver)
         body = expect_status(await rides.mine(driver, status="upcoming,upcoming"), 200)
         assert [ride["id"] for ride in body] == [offer.id]
+
+    @pytest.mark.parametrize("status", ["", ",", ",,"])
+    async def test_an_empty_status_means_no_filter(self, rides, driver, status: str) -> None:
+        """CONTRACT.md §2 (0.4.3): an empty value, or one that is all commas,
+        means no filter rather than an error - "it's what a filter UI sends with
+        nothing selected"."""
+        upcoming = await rides.offer(driver, departure_in=30)
+        cancelled = await rides.offer(driver, departure_in=36)
+        expect_status(await rides.cancel(cancelled), 200)
+
+        body = expect_status(await rides.mine(driver, status=status), 200)
+        assert {ride["id"] for ride in body} == {upcoming.id, cancelled.id}
 
     async def test_a_filter_that_matches_nothing_is_empty_not_an_error(self, rides, driver) -> None:
         await rides.offer(driver)

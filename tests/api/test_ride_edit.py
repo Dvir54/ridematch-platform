@@ -226,19 +226,37 @@ class TestNullability:
     is what openapi.yaml says, since only `notes` has `"null"` in its type."""
 
     @pytest.mark.parametrize("field", NEVER_NULLABLE)
-    async def test_an_explicit_null_is_rejected(self, rides, offer, field: str) -> None:
-        expect_error(await rides.patch(offer, {field: None}), 422, "VALIDATION_ERROR")
-
-    @pytest.mark.xfail(
-        reason="FAIL reported to @backend 2026-10-01: PATCH /rides/{id} reports a null on a "
-        "non-nullable field as details[].field == 'body' instead of 'body.<field>'. POST /rides "
-        "gets it right. CONTRACT.md §5: 'details lists fields'; openapi's example is "
-        "'body.departure_time'.",
-        strict=True,
-    )
-    @pytest.mark.parametrize("field", NEVER_NULLABLE)
-    async def test_the_rejected_null_names_its_field(self, rides, offer, field: str) -> None:
+    async def test_an_explicit_null_is_rejected_and_names_its_field(
+        self, rides, offer, field: str
+    ) -> None:
+        """CONTRACT.md §5: `details` lists fields. The null has to be reported
+        where it was sent (`body.<field>`), because that is what @frontend
+        highlights - a whole-body error leaves it nothing to point at."""
         expect_validation_error(await rides.patch(offer, {field: None}), field=field)
+
+    @pytest.mark.parametrize(
+        "field",
+        [
+            pytest.param(
+                name,
+                marks=pytest.mark.xfail(
+                    reason="FAIL reported to @backend 2026-10-02: POST /rides accepts "
+                    "preferences: null (201, silently ignored) while PATCH correctly answers 422 "
+                    "at body.preferences. The per-key nulls are right on both "
+                    "(body.preferences.pets), so only the whole object on create is missing the "
+                    "NotNull annotation.",
+                    strict=True,
+                )
+                if name == "preferences"
+                else (),
+            )
+            for name in NEVER_NULLABLE
+        ],
+    )
+    async def test_the_same_null_is_rejected_on_create(self, rides, driver, field: str) -> None:
+        """One shape in both directions: POST and PATCH must agree, because
+        @frontend's Create and Edit forms share their validation handling."""
+        expect_validation_error(await rides.create_response(driver, **{field: None}), field=field)
 
 
 class TestCapacity:
@@ -334,18 +352,10 @@ class TestPreferencesMerge:
             await rides.patch(offer, {"preferences": {"pets": value}}), field="pets"
         )
 
-    @pytest.mark.xfail(
-        reason="FAIL reported to @backend 2026-10-01: preferences={'pets': null} is accepted "
-        "(200) and silently ignored. RidePreferencesPatch.pets is `type: boolean`, CONTRACT.md §4 "
-        "says booleans must be real JSON booleans, and 'yes' is correctly a 422 - only null slips "
-        "through.",
-        strict=True,
-    )
     @pytest.mark.parametrize("key", ["smoking", "pets", "music", "gender_only"])
     async def test_a_preference_may_not_be_null(self, rides, offer, key: str) -> None:
-        expect_error(
-            await rides.patch(offer, {"preferences": {key: None}}), 422, "VALIDATION_ERROR"
-        )
+        """A merge leaves an absent key alone; null is not a way to spell absent."""
+        expect_validation_error(await rides.patch(offer, {"preferences": {key: None}}), field=key)
 
 
 class TestEditableStatuses:
