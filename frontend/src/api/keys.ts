@@ -65,3 +65,27 @@ export const ratingKeys = {
   byUser: (userId: number, roleRated?: RoleRated) =>
     ['ratings', 'user', userId, roleRated ?? 'all'] as const,
 }
+
+export interface AdminUsersParams {
+  q?: string
+  is_active?: boolean
+  is_admin?: boolean
+  limit: number
+  offset: number
+}
+
+export interface AdminRidesParams {
+  status?: readonly RideStatus[]
+  driver_id?: number
+  from?: string
+  to?: string
+  limit: number
+  offset: number
+}
+
+export const adminKeys = {
+  users: (params: AdminUsersParams) => ['admin', 'users', params] as const,
+  userDetail: (userId: number) => ['admin', 'users', 'detail', userId] as const,
+  rides: (params: AdminRidesParams) => ['admin', 'rides', { ...params, status: filter(params.status) }] as const,
+  analytics: (from: string, to: string) => ['admin', 'analytics', from, to] as const,
+}

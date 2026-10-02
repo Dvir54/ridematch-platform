@@ -95,9 +95,43 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   }
 }
 
+export interface ListResult<T> {
+  data: T[]
+  /** From `X-Total-Count` — admin lists only (CONTRACT §2). */
+  total: number
+}
+
+/** Like `request`, but reads `X-Total-Count` off the response instead of discarding it. */
+export async function requestList<T>(path: string, options: RequestOptions = {}): Promise<ListResult<T>> {
+  const { method = 'GET', query, signal } = options
+
+  const headers = new Headers({ Accept: 'application/json' })
+  const token = await tokenProvider()
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+
+  let response: Response
+  try {
+    response = await fetch(buildUrl(path, query), { method, headers, signal })
+  } catch (cause) {
+    if (cause instanceof DOMException && cause.name === 'AbortError') throw cause
+    throw new ApiError(0, { code: 'NETWORK_ERROR', message: 'The request never reached RideMatch.' })
+  }
+
+  if (!response.ok) throw new ApiError(response.status, await readErrorBody(response))
+
+  const total = Number(response.headers.get('X-Total-Count') ?? 0) || 0
+  try {
+    return { data: (await response.json()) as T[], total }
+  } catch {
+    throw new ApiError(response.status, UNEXPECTED)
+  }
+}
+
 export const api = {
   get: <T>(path: string, query?: Query, signal?: AbortSignal) =>
     request<T>(path, { method: 'GET', query, signal }),
+  getList: <T>(path: string, query?: Query, signal?: AbortSignal) =>
+    requestList<T>(path, { method: 'GET', query, signal }),
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body }),
   patch: <T>(path: string, body: unknown) => request<T>(path, { method: 'PATCH', body }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),

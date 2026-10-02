@@ -2,11 +2,12 @@ import { useClerk } from '@clerk/clerk-react'
 import { messageFor } from '../../api/errors'
 import { useMyStats } from '../../api/hooks/users'
 import { useCurrentUser } from '../../auth/currentUserContext'
-import { Button } from '../../components/Button'
+import { Button, ButtonLink } from '../../components/Button'
 import { StatsGrid } from '../../components/StatsGrid'
 import { TabHeader } from '../../components/TabHeader'
 import { InlineLoader, LoadFailure } from '../../components/states'
 import { formatRating } from '../../lib/rating'
+import { paths } from '../../routes'
 import { VehicleEditor } from './VehicleEditor'
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -114,6 +115,14 @@ export function ProfileScreen() {
           <VehicleEditor vehicle={user.vehicle ?? null} />
         </div>
       </section>
+
+      {user.is_admin ? (
+        <div className="mt-5">
+          <ButtonLink to={paths.admin} variant="secondary" full>
+            Admin panel
+          </ButtonLink>
+        </div>
+      ) : null}
 
       <div className="mt-8 flex flex-col gap-3">
         <Button variant="secondary" full onClick={() => openUserProfile()}>

@@ -30,6 +30,12 @@ export const paths = {
   profile: '/app/profile',
   user: (userId: number) => `/app/users/${userId}`,
   rate: (rideId: number, userId: number) => `/app/rate/${rideId}/${userId}`,
+
+  admin: '/app/admin',
+  adminUsers: '/app/admin/users',
+  adminUser: (userId: number) => `/app/admin/users/${userId}`,
+  adminRides: '/app/admin/rides',
+  adminAnalytics: '/app/admin/analytics',
 } as const
 
 export function homePathFor(mode: Mode): string {

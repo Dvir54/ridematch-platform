@@ -46,7 +46,7 @@ export function touchRide(row: RideRow): void {
 }
 
 /** Cancelling or starting a ride resolves whatever requests were still open. */
-function closeOpenRequests(rideId: number, outcome: 'cancelled' | 'rejected'): void {
+export function closeOpenRequests(rideId: number, outcome: 'cancelled' | 'rejected'): void {
   const now = new Date().toISOString()
   for (const request of db.requests) {
     if (request.ride_id !== rideId) continue
