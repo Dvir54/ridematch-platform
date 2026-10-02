@@ -234,25 +234,7 @@ class TestNullability:
         highlights - a whole-body error leaves it nothing to point at."""
         expect_validation_error(await rides.patch(offer, {field: None}), field=field)
 
-    @pytest.mark.parametrize(
-        "field",
-        [
-            pytest.param(
-                name,
-                marks=pytest.mark.xfail(
-                    reason="FAIL reported to @backend 2026-10-02: POST /rides accepts "
-                    "preferences: null (201, silently ignored) while PATCH correctly answers 422 "
-                    "at body.preferences. The per-key nulls are right on both "
-                    "(body.preferences.pets), so only the whole object on create is missing the "
-                    "NotNull annotation.",
-                    strict=True,
-                )
-                if name == "preferences"
-                else (),
-            )
-            for name in NEVER_NULLABLE
-        ],
-    )
+    @pytest.mark.parametrize("field", NEVER_NULLABLE)
     async def test_the_same_null_is_rejected_on_create(self, rides, driver, field: str) -> None:
         """One shape in both directions: POST and PATCH must agree, because
         @frontend's Create and Edit forms share their validation handling."""

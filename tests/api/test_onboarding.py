@@ -193,6 +193,48 @@ class TestBodyValidation:
         expect_error(response, 422, "VALIDATION_ERROR")
 
 
+class TestEvery422CarriesDetails:
+    """CONTRACT.md §2 (0.4.6): "Every 422 carries `details`, whatever its `code`
+    - the specific ones (UNDERAGE, TERMS_NOT_ACCEPTED, DEPARTURE_IN_PAST) as
+    much as VALIDATION_ERROR - with at least one entry."
+
+    `expect_error` checks this for every 422 the suite touches. These tests name
+    the codes the guarantee was written for, and pin where each one points: a
+    response carrying the right code with an empty `details` passes a code-only
+    assertion while leaving a client nothing to show, which is exactly what made
+    @frontend's onboarding form go silent (flagged by @backend 2026-10-02).
+    """
+
+    async def test_underage_points_at_the_date_of_birth(self, users) -> None:
+        response = await users.onboard_response(
+            date_of_birth=clock.birth_date_for_age(17).isoformat()
+        )
+        expect_validation_error(response, "UNDERAGE", field="date_of_birth")
+
+    async def test_terms_not_accepted_points_at_the_checkbox(self, users) -> None:
+        response = await users.onboard_response(accepted_terms=False)
+        expect_validation_error(response, "TERMS_NOT_ACCEPTED", field="accepted_terms")
+
+    async def test_a_short_plate_points_at_the_plate(self, users) -> None:
+        """@backend's cheap case: `Vehicle.plate` is minLength 2, and a
+        one-character plate produced no message, no highlight and no visible
+        change on the real form - it had mapped only four of the nine fields it
+        sends, and relied on `details` for the rest."""
+        response = await users.onboard_response(
+            vehicle={"make": "A", "model": "B", "color": "C", "plate": "X"}
+        )
+        expect_validation_error(response, field="plate")
+
+    async def test_a_nested_field_is_named_by_its_path(self, users) -> None:
+        body = await users.onboard_response(
+            vehicle={"make": "A", "model": "B", "color": "C", "plate": "X"}
+        )
+        detail = expect_validation_error(body)["details"][0]
+        assert detail["field"].startswith("body."), (
+            f"a request-body failure should be located under `body.`, got {detail['field']!r}"
+        )
+
+
 class TestPrivilegeEscalation:
     async def test_is_admin_in_the_body_is_ignored(self, client, users, db) -> None:
         """OnboardingRequest has no is_admin field, so it must not take effect."""
