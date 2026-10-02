@@ -1,0 +1,18 @@
+{
+  "name": "ridematch-e2e",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@clerk/backend": "^2.0.0",
+    "@clerk/testing": "^1.10.0",
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^22.0.0",
+    "dotenv": "^17.0.0",
+    "typescript": "~5.9.3"
+  }
+}

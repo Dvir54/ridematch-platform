@@ -33,7 +33,7 @@ uv run ruff check . && uv run ruff format --check . && uv run pytest -q
 | `support/rides.py` | Rides and requests, likewise - plus the seat invariant and the notification-row readers |
 | `unit/` | The harness itself, plus `schema.sql`. No backend needed |
 | `api/` | One file per area |
-| `e2e/` | Playwright (Phase 7) |
+| `e2e/` | Playwright against the full stack (`cd e2e && npm install && npx playwright install chromium && npm test`; needs Clerk keys in the root `.env`, Docker up, and the test DB built by any pytest run) |
 
 ## How a test asserts
 
