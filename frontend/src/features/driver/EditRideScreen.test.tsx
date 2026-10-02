@@ -1,3 +1,4 @@
+import { http, HttpResponse } from 'msw'
 import { Route, Routes } from 'react-router-dom'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -155,5 +156,93 @@ describe('reaching the edit form for a ride that is not yours', () => {
     renderScreen(me, ride.id)
 
     expect(await screen.findByText('This ride is cancelled')).toBeVisible()
+  })
+})
+
+/**
+ * A 422 has to reach the input that caused it. The backend named only `body` on
+ * PATCH until it was fixed at 0.4.3, so both shapes are exercised here: the fixed
+ * one must highlight the field, and the old one must still show its reason
+ * somewhere rather than leaving the user with "Some details need fixing."
+ */
+describe('a 422 from the server', () => {
+  function rejectPatchWith(details: { field: string; message: string }[]) {
+    server.use(
+      http.patch('*/rides/:rideId', () =>
+        HttpResponse.json(
+          { code: 'VALIDATION_ERROR', message: 'Request failed validation.', details },
+          { status: 422 },
+        ),
+      ),
+    )
+  }
+
+  async function submitAPriceChange() {
+    const user = userEvent.setup()
+    const me = seedOnboardedDriver()
+    const ride = seedRide({ driver_id: me.id })
+    renderScreen(me, ride.id)
+
+    const price = await screen.findByLabelText(/Price per seat/)
+    await user.clear(price)
+    await user.type(price, '40')
+    await user.click(screen.getByRole('button', { name: 'Save the changes' }))
+  }
+
+  it('lands on the input the backend named', async () => {
+    rejectPatchWith([{ field: 'body.price_per_seat', message: 'That is more than the cap.' }])
+    await submitAPriceChange()
+
+    const price = await screen.findByLabelText(/Price per seat/)
+    expect(await screen.findByText('That is more than the cap.')).toBeVisible()
+    expect(price).toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('reaches an input even when the detail names a coordinate the form hides', async () => {
+    // The address picker owns the address and both coordinates, so a 422 on
+    // `start_lat` has to surface on the pickup field.
+    rejectPatchWith([{ field: 'body.start_lat', message: 'That is not on land.' }])
+    await submitAPriceChange()
+
+    expect(await screen.findByText('That is not on land.')).toBeVisible()
+    expect(screen.getByRole('combobox', { name: /Pickup point/ })).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    )
+  })
+
+  it('still shows the reason when the detail names only the body', async () => {
+    rejectPatchWith([{ field: 'body', message: 'notes is the only field that may be null.' }])
+    await submitAPriceChange()
+
+    expect(
+      await screen.findByText('notes is the only field that may be null.'),
+    ).toBeVisible()
+  })
+
+  it('shows a detail with no input of its own next to the summary', async () => {
+    rejectPatchWith([
+      { field: 'body.preferences.pets', message: 'Must be true or false, not "yes".' },
+    ])
+    await submitAPriceChange()
+
+    expect(await screen.findByText('Must be true or false, not "yes".')).toBeVisible()
+  })
+
+  it('drops a stale server answer once the form itself has a problem', async () => {
+    const user = userEvent.setup()
+    rejectPatchWith([{ field: 'body.price_per_seat', message: 'That is more than the cap.' }])
+    await submitAPriceChange()
+    await screen.findByText('That is more than the cap.')
+
+    // The form no longer submits, so the server's answer is about a body we are not
+    // sending any more — showing both would put two reasons on one input.
+    const price = screen.getByLabelText(/Price per seat/)
+    await user.clear(price)
+    await user.type(price, '25.505')
+    await user.click(screen.getByRole('button', { name: 'Save the changes' }))
+
+    expect(await screen.findByText(/up to two decimals/)).toBeVisible()
+    expect(screen.queryByText('That is more than the cap.')).not.toBeInTheDocument()
   })
 })

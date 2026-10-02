@@ -48,7 +48,12 @@ describe('the driver Requests tab', () => {
     seedRequest({ ride_id: soon.id, passenger_id: 3 })
     renderScreen(me)
 
-    const links = await screen.findAllByRole('link')
+    // Both groups must be on screen before the order means anything —
+    // findAllByRole resolves on the first match, which can be one group mid-render.
+    await screen.findByText(/Allenby Street 40/)
+    await screen.findByText(/Jaffa Street 97/)
+
+    const links = screen.getAllByRole('link')
     expect(links).toHaveLength(2)
     expect(within(links[0]).getByText(/Allenby Street 40/)).toBeVisible()
     expect(within(links[1]).getByText(/Jaffa Street 97/)).toBeVisible()

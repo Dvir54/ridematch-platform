@@ -63,27 +63,27 @@ describe('error messages', () => {
   })
 })
 
-describe('a 422 that names no field', () => {
-  const bodyLevel = new ApiError(422, {
-    code: 'VALIDATION_ERROR',
-    message: 'Request failed validation.',
-    details: [{ field: 'body', message: 'notes is the only field that may be null.' }],
-  })
-
-  it('is readable as a form-level problem', () => {
-    // PATCH /rides/{id} answers `field: "body"` where POST /rides names the field,
-    // so a form mapping details to inputs alone would drop the reason (found by @tests).
-    expect(bodyLevel.formError()).toBe('notes is the only field that may be null.')
-    expect(bodyLevel.fieldError('notes')).toBeUndefined()
-  })
-
-  it('is not confused with a real field error', () => {
-    const fieldLevel = new ApiError(422, {
+describe('a 422 detail', () => {
+  it('is matched whether or not the backend prefixes it with body.', () => {
+    const named = new ApiError(422, {
       code: 'VALIDATION_ERROR',
       message: 'Request failed validation.',
       details: [{ field: 'body.capacity', message: 'Must be at least 1.' }],
     })
-    expect(fieldLevel.formError()).toBeUndefined()
-    expect(fieldLevel.fieldError('capacity')).toBe('Must be at least 1.')
+    expect(named.fieldError('capacity')).toBe('Must be at least 1.')
+    expect(named.fieldError('price_per_seat')).toBeUndefined()
+  })
+
+  it('stays readable when it names the whole body and no single field', () => {
+    // PATCH /rides/{id} answered `field: "body"` until the backend fixed it at
+    // 0.4.3. `details` is exposed raw so a form can still show the reason — see
+    // RideForm's serverErrors(), which buckets anything it cannot place.
+    const vague = new ApiError(422, {
+      code: 'VALIDATION_ERROR',
+      message: 'Request failed validation.',
+      details: [{ field: 'body', message: 'notes is the only field that may be null.' }],
+    })
+    expect(vague.fieldError('notes')).toBeUndefined()
+    expect(vague.details).toHaveLength(1)
   })
 })

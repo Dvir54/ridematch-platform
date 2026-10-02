@@ -64,17 +64,6 @@ export class ApiError extends Error {
     const match = this.details.find((d) => d.field === field || d.field === `body.${field}`)
     return match?.message
   }
-
-  /**
-   * A detail that names the whole body rather than a field, so no input can be
-   * highlighted from it. PATCH /rides/{id} currently answers `field: "body"` for a
-   * null-valued 422 where POST /rides names the field (found by @tests), so a form
-   * that only maps details to inputs would swallow the reason entirely.
-   */
-  formError(): string | undefined {
-    const match = this.details.find((d) => !d.field || d.field === 'body')
-    return match?.message
-  }
 }
 
 export function isApiError(error: unknown): error is ApiError {

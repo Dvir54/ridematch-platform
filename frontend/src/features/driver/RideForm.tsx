@@ -29,7 +29,50 @@ interface Values {
   preferences: RidePreferences
 }
 
-type Errors = Partial<Record<'start' | 'end' | 'departure' | 'capacity' | 'price', string>>
+type FieldKey = 'start' | 'end' | 'departure' | 'capacity' | 'price' | 'notes'
+type Errors = Partial<Record<FieldKey, string>>
+
+/**
+ * Which input a server-named field belongs to. A 422 names the body field
+ * (`body.start_lat`), and several of those share one control: the address picker
+ * owns the address and both coordinates, because the user never edits them apart.
+ */
+const FIELD_OWNERS: Record<string, FieldKey> = {
+  start_address: 'start',
+  start_lat: 'start',
+  start_lng: 'start',
+  end_address: 'end',
+  end_lat: 'end',
+  end_lng: 'end',
+  departure_time: 'departure',
+  capacity: 'capacity',
+  price_per_seat: 'price',
+  notes: 'notes',
+}
+
+/**
+ * A 422's `details` turned into errors on the inputs that caused them. Anything
+ * with no input of its own — `preferences.pets`, or a detail naming the whole
+ * body — comes back in `rest` for the summary, so no reason is ever dropped.
+ *
+ * Both shapes have to be handled: `field` named only `body` on PATCH until the
+ * backend fixed it at 0.4.3, and a form that mapped details to inputs alone would
+ * have shown nothing at all in that case.
+ */
+function serverErrors(error: unknown): { fields: Errors; rest: string[] } {
+  if (!isApiError(error)) return { fields: {}, rest: [] }
+
+  const fields: Errors = {}
+  const rest: string[] = []
+
+  for (const detail of error.details) {
+    const name = detail.field.replace(/^body\./, '')
+    const owner = FIELD_OWNERS[name]
+    if (owner) fields[owner] ??= detail.message
+    else rest.push(detail.message)
+  }
+  return { fields, rest }
+}
 
 function initialValues(ride: Ride | undefined): Values {
   if (!ride) {
@@ -195,16 +238,24 @@ export function RideForm({
   }
 
   const genderOnlyWithoutGender = values.preferences.gender_only && !me.gender
-  // A 422 that names the whole body rather than a field cannot highlight an input,
-  // so its own words go next to the summary instead of being dropped.
-  const bodyProblem = isApiError(error) ? error.formError() : undefined
+
+  // Client-side problems mean the form never submitted, so a server answer still
+  // sitting in the mutation describes a body we are no longer sending. Showing both
+  // at once would put two contradictory reasons on one input.
+  const blockedHere = Object.keys(errors).length > 0
+  const fromServer = blockedHere ? { fields: {}, rest: [] } : serverErrors(error)
+  const shown: Errors = blockedHere ? errors : fromServer.fields
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-6">
-      {error ? (
+      {error && !blockedHere ? (
         <ErrorNotice>
           {messageFor(error)}
-          {bodyProblem ? ` ${bodyProblem}` : null}
+          {fromServer.rest.map((message) => (
+            <span key={message} className="mt-1 block font-normal">
+              {message}
+            </span>
+          ))}
         </ErrorNotice>
       ) : null}
 
@@ -237,14 +288,14 @@ export function RideForm({
             placeholder="Where you set off from"
             hint="Start typing, then pick a place so the map knows where it is."
             value={values.start}
-            error={errors.start}
+            error={shown.start}
             onChange={(value) => set('start', value)}
           />
           <AddressField
             label="Destination"
             placeholder="Where you are heading"
             value={values.end}
-            error={errors.end}
+            error={shown.end}
             onChange={(value) => set('end', value)}
           />
           <TextField
@@ -252,7 +303,7 @@ export function RideForm({
             type="datetime-local"
             min={soonestDepartureInput()}
             value={values.departure}
-            error={errors.departure}
+            error={shown.departure}
             onChange={(event) => set('departure', event.target.value)}
           />
         </section>
@@ -267,7 +318,7 @@ export function RideForm({
               : undefined
           }
           value={values.capacity}
-          error={errors.capacity}
+          error={shown.capacity}
           onChange={(event) => set('capacity', Number(event.target.value))}
         >
           {SEAT_CHOICES.map((seats) => (
@@ -283,7 +334,7 @@ export function RideForm({
           placeholder="25.00"
           hint="What each passenger pays you. Paid in person, not through RideMatch."
           value={values.price}
-          error={errors.price}
+          error={shown.price}
           onChange={(event) => set('price', event.target.value)}
         />
 
@@ -292,6 +343,7 @@ export function RideForm({
           optional
           rows={3}
           maxLength={1000}
+          error={shown.notes}
           placeholder="Where exactly to wait, luggage space, anything else worth saying."
           value={values.notes}
           onChange={(event) => set('notes', event.target.value)}
