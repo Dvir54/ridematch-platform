@@ -1,10 +1,15 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { ApiTokenBridge } from './auth/ApiTokenBridge'
 import { useCurrentUser } from './auth/currentUserContext'
-import { RequireMode, RequireProfile, RequireSignedIn } from './auth/guards'
+import { RequireAdmin, RequireMode, RequireProfile, RequireSignedIn } from './auth/guards'
 import { AppShell } from './components/AppShell'
 import { ButtonLink } from './components/Button'
 import { MessageScreen } from './components/states'
+import { AdminAnalyticsScreen } from './features/admin/AdminAnalyticsScreen'
+import { AdminLayout } from './features/admin/AdminLayout'
+import { AdminRidesScreen } from './features/admin/AdminRidesScreen'
+import { AdminUserDetailScreen } from './features/admin/AdminUserDetailScreen'
+import { AdminUsersScreen } from './features/admin/AdminUsersScreen'
 import { SignInScreen, SignUpScreen } from './features/auth/AuthScreens'
 import { CreateRideScreen } from './features/driver/CreateRideScreen'
 import { DriverHomeScreen } from './features/driver/DriverHomeScreen'
@@ -76,6 +81,16 @@ export function App() {
                 <Route path="profile" element={<ProfileScreen />} />
                 <Route path="users/:userId" element={<PublicProfileScreen />} />
                 <Route path="rate/:rideId/:userId" element={<RateScreen />} />
+
+                <Route element={<RequireAdmin />}>
+                  <Route path="admin" element={<AdminLayout />}>
+                    <Route index element={<Navigate to="users" replace />} />
+                    <Route path="users" element={<AdminUsersScreen />} />
+                    <Route path="users/:userId" element={<AdminUserDetailScreen />} />
+                    <Route path="rides" element={<AdminRidesScreen />} />
+                    <Route path="analytics" element={<AdminAnalyticsScreen />} />
+                  </Route>
+                </Route>
               </Route>
             </Route>
           </Route>

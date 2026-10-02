@@ -230,6 +230,11 @@ export function seedOnboardedDriver(overrides: Partial<UserMe> = {}): UserMe {
   })
 }
 
+/** `is_admin` lives in our DB, not Clerk (CONTRACT §2 D12) — the mock flag is enough. */
+export function seedOnboardedAdmin(overrides: Partial<UserMe> = {}): UserMe {
+  return seedOnboardedMe({ is_admin: true, ...overrides })
+}
+
 export function findUser(id: number): UserMe | undefined {
   return [db.me, ...db.users].find((candidate) => candidate?.id === id) ?? undefined
 }

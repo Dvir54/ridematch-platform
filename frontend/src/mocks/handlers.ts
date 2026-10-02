@@ -10,6 +10,7 @@ import type {
   UserStats,
   UserUpdate,
 } from '../api/types'
+import { adminHandlers } from './adminHandlers'
 import { db, defaultNotifications, defaultPreferences, findUser } from './db'
 import { conflict, fail, onboardingRequired, notFound, signedIn, unauthenticated } from './http'
 import { mapboxHandlers } from './mapboxHandlers'
@@ -191,5 +192,6 @@ export const handlers = [
   ...ratingHandlers,
   ...searchHandlers,
   ...notificationHandlers,
+  ...adminHandlers,
   ...mapboxHandlers,
 ]

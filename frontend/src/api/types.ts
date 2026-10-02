@@ -51,3 +51,6 @@ export type RoleRated = Schemas['RoleRated']
 export type Rating = Schemas['Rating']
 export type RatingCreate = Schemas['RatingCreate']
 export type PendingRating = Schemas['PendingRating']
+
+export type AdminUserDetail = Schemas['AdminUserDetail']
+export type AnalyticsSummary = Schemas['AnalyticsSummary']
