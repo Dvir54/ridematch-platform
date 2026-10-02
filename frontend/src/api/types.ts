@@ -37,5 +37,12 @@ export type RidePreferencesPatch = Schemas['RidePreferencesPatch']
 
 export type RideRequest = Schemas['RideRequest']
 export type RideRequestCreate = Schemas['RideRequestCreate']
+/** The caller's own blocking request on a ride, carried by `Ride.my_request` (D20). */
+export type MyRequest = Schemas['MyRequest']
+
+export type ScoreBreakdown = Schemas['ScoreBreakdown']
+export type RideMatch = Schemas['RideMatch']
+/** The `/search` sort parameter — an inline enum in openapi.yaml, not a named schema. */
+export type SearchSort = 'best_match' | 'earliest' | 'cheapest'
 
 export type Notification = Schemas['Notification']

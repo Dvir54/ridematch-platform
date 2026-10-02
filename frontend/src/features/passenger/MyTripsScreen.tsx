@@ -82,7 +82,7 @@ export function MyTripsScreen() {
                 </p>
               }
             />
-            <CancelRequestAction request={request} />
+            <CancelRequestAction ride={request.ride} requestId={request.id} status={request.status} />
           </div>
         ))}
       </div>

@@ -1,4 +1,4 @@
-import type { RequestStatus, RideStatus } from './types'
+import type { RequestStatus, RideStatus, SearchSort } from './types'
 
 /** Query keys shared between the hooks and the cache-wide error handling. */
 export const sessionKey = ['session'] as const
@@ -24,9 +24,22 @@ export const requestKeys = {
   all: ['requests'] as const,
   mine: (statuses?: readonly RequestStatus[]) => ['requests', 'mine', filter(statuses)] as const,
   incoming: (status?: RequestStatus) => ['requests', 'incoming', status ?? 'pending'] as const,
-  /** The caller's own request on one ride, derived from `/requests/mine`. */
-  onRide: (rideId: number) => ['requests', 'mine', 'on-ride', rideId] as const,
   detail: (requestId: number) => ['requests', 'detail', requestId] as const,
+}
+
+export interface SearchParams {
+  start_lat: number
+  start_lng: number
+  end_lat: number
+  end_lng: number
+  time: string
+  budget?: string
+  seats?: number
+  sort?: SearchSort
+}
+
+export const searchKeys = {
+  results: (params: SearchParams) => ['search', params] as const,
 }
 
 /** Comma-separated status filter, as CONTRACT §2 specifies. Empty → omitted. */

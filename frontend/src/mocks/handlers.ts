@@ -10,11 +10,12 @@ import type {
   UserUpdate,
 } from '../api/types'
 import { db, defaultNotifications, defaultPreferences, findUser } from './db'
-import { fail, onboardingRequired, notFound, signedIn, unauthenticated } from './http'
+import { conflict, fail, onboardingRequired, notFound, signedIn, unauthenticated } from './http'
 import { mapboxHandlers } from './mapboxHandlers'
 import { toPublic } from './project'
 import { requestHandlers } from './requestHandlers'
 import { rideHandlers } from './rideHandlers'
+import { searchHandlers } from './searchHandlers'
 
 const base = env.apiBaseUrl.replace(/\/$/, '')
 
@@ -101,17 +102,26 @@ const userHandlers = [
   http.patch(`${base}/users/me`, async ({ request }) => {
     if (!signedIn(request)) return unauthenticated()
     if (!db.me) return onboardingRequired()
+    const me = db.me
 
     const patch = (await request.json()) as UserUpdate
     if (patch.phone !== null && patch.phone !== undefined && !isValidPhone(patch.phone)) {
       return badPhone()
     }
+    if (
+      patch.vehicle === null &&
+      db.rides.some(
+        (row) => row.driver_id === me.id && (row.status === 'upcoming' || row.status === 'full'),
+      )
+    ) {
+      return conflict('VEHICLE_REQUIRED', 'Remove your upcoming rides before removing your car.')
+    }
 
     const { preferences, ...rest } = patch
     db.me = {
-      ...db.me,
+      ...me,
       ...rest,
-      preferences: mergePreferences(db.me.preferences, preferences),
+      preferences: mergePreferences(me.preferences, preferences),
     }
     return HttpResponse.json(db.me)
   }),
@@ -128,5 +138,6 @@ export const handlers = [
   ...userHandlers,
   ...rideHandlers,
   ...requestHandlers,
+  ...searchHandlers,
   ...mapboxHandlers,
 ]

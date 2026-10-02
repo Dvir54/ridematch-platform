@@ -60,28 +60,3 @@ export const useApproveRequest = () => useRequestAction('approve')
 export const useRejectRequest = () => useRequestAction('reject')
 /** Passenger action. Approved seats lock an hour out → 409 TOO_LATE_TO_CANCEL. */
 export const useCancelRequest = () => useRequestAction('cancel')
-
-/**
- * The caller's own request on one ride, if there is one. There is no endpoint
- * for a single (ride, passenger) pair, so this reads the passenger's own list —
- * at the contract's maximum page size — and picks the row for this ride.
- *
- * `rejected` is included on purpose: a driver's rejection is final for the ride
- * (D2), and knowing about it is what lets the screen explain that instead of
- * offering a button that can only answer PREVIOUSLY_REJECTED.
- */
-const RELEVANT: RequestStatus[] = ['pending', 'approved', 'rejected']
-
-export function useMyRequestOnRide(rideId: number | undefined) {
-  return useQuery({
-    queryKey: requestKeys.onRide(rideId ?? 0),
-    queryFn: ({ signal }) =>
-      api.get<RideRequest[]>(
-        '/requests/mine',
-        { status: RELEVANT.join(','), limit: 100 },
-        signal,
-      ),
-    enabled: rideId !== undefined,
-    select: (rows) => rows.find((row) => row.ride.id === rideId) ?? null,
-  })
-}
