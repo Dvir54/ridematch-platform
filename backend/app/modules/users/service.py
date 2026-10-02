@@ -1,5 +1,6 @@
 """User profile logic: onboarding, reading and updating (CONTRACT.md §4 Users / Vehicles)."""
 
+from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Any
 
@@ -68,6 +69,15 @@ async def get_user_or_404(db: AsyncSession, user_id: int) -> User:
     if user is None:
         raise NotFound("NOT_FOUND", "User not found.")
     return user
+
+
+async def get_users_by_ids(db: AsyncSession, user_ids: Sequence[int]) -> dict[int, User]:
+    """`{id: user}` in one query — for responses that embed several users at once."""
+    wanted = set(user_ids)
+    if not wanted:
+        return {}
+    rows = (await db.execute(select(User).where(User.id.in_(wanted)))).scalars().all()
+    return {user.id: user for user in rows}
 
 
 async def email_exists(db: AsyncSession, email: str) -> bool:
