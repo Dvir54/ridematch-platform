@@ -102,6 +102,23 @@ class ContractValidator:
                 return template
         raise ContractError(f"{path!r} does not match any path in {self.spec_path.name}")
 
+    def resolve_schema_by_name(self, name: str) -> dict[str, Any]:
+        """One schema from `components.schemas`, with every $ref inlined.
+
+        Lets a test read a *request* schema, not only the response schemas
+        `validate_response` handles - support.nullability uses it to take the
+        field list from the contract instead of repeating it by hand.
+        """
+        schemas = self.spec.get("components", {}).get("schemas", {})
+        if name not in schemas:
+            raise ContractError(
+                f"{self.spec_path.name} has no schema {name!r}. Known: {', '.join(sorted(schemas))}"
+            )
+        resolved = self._resolve(schemas[name])
+        if not isinstance(resolved, dict):
+            raise ContractError(f"schema {name!r} is not an object schema: {resolved!r}")
+        return resolved
+
     def operation(self, method: str, path_template: str) -> dict[str, Any]:
         try:
             return self.spec["paths"][path_template][method.lower()]

@@ -14,6 +14,11 @@ from support.factories import INVALID_PHONES, VALID_PHONES
 ME = "/users/me"
 DEFAULT_NOTIFICATIONS = {"email": True, "push": True, "websocket": True}
 
+# openapi.yaml decides nullability field by field: `UserUpdate` grants `"null"`
+# to phone, gender and vehicle, and `UserPreferencesPatch` to default_mode.
+NEVER_NULLABLE = ["name", "preferences"]
+NULLABLE = ["phone", "gender", "vehicle"]
+
 
 class TestGet:
     async def test_returns_the_callers_profile(self, client, user) -> None:
@@ -227,6 +232,107 @@ class TestPatchValidation:
             await client.patch(ME, json={"gender": "spaceship"}, headers=user.headers)
         )
         assert body.get("details"), "VALIDATION_ERROR should list the offending fields"
+
+
+class TestPatchNullability:
+    """openapi.yaml decides this field by field: a null is only legal where the
+    schema says `"null"`. `UserUpdate` grants it to `phone`, `gender` and
+    `vehicle`, and `UserPreferencesPatch` grants it to `default_mode` - nowhere
+    else. CONTRACT.md 4 adds the reason the rest must refuse it: a PATCH is a
+    shallow merge where "an absent key is left alone", so a null cannot mean
+    "leave alone" as well, or there would be no way to say either one.
+
+    Added at @backend's request after their 0.4.3 fix (2026-10-01): the same
+    whole-body-validator defect they fixed on the ride schemas was in these.
+    """
+
+    @pytest.mark.parametrize("field", NEVER_NULLABLE)
+    async def test_a_null_is_rejected_and_names_its_field(self, client, user, field: str) -> None:
+        response = await client.patch(ME, json={field: None}, headers=user.headers)
+        expect_validation_error(response, field=field)
+
+    @pytest.mark.parametrize("key", ["smoking", "pets", "language", "theme", "notifications"])
+    async def test_a_null_preference_is_rejected(self, client, user, key: str) -> None:
+        response = await client.patch(ME, json={"preferences": {key: None}}, headers=user.headers)
+        expect_validation_error(response, field=key)
+
+    @pytest.mark.parametrize("key", ["email", "push", "websocket"])
+    async def test_a_null_notification_preference_is_rejected(self, client, user, key: str) -> None:
+        response = await client.patch(
+            ME, json={"preferences": {"notifications": {key: None}}}, headers=user.headers
+        )
+        expect_validation_error(response, field=key)
+
+    async def test_a_rejected_null_changes_nothing(self, client, user) -> None:
+        before = expect_status(await client.get(ME, headers=user.headers), 200)
+        await client.patch(
+            ME,
+            json={"name": None, "preferences": {"smoking": None}},
+            headers=user.headers,
+        )
+        after = expect_status(await client.get(ME, headers=user.headers), 200)
+        assert after["name"] == before["name"]
+        assert after["preferences"] == before["preferences"]
+
+    @pytest.mark.parametrize("field", NULLABLE)
+    async def test_the_nullable_fields_still_clear(self, client, users, field: str) -> None:
+        """The other half of the pair, and the half that would break first if a
+        blanket no-nulls rule were applied: these four nulls are the contract's
+        only way to remove a value."""
+        driver = await users.create_driver(phone="050-123-4567", gender="female")
+        body = expect_status(
+            await client.patch(ME, json={field: None}, headers=driver.headers), 200
+        )
+        assert body[field] is None
+
+    async def test_default_mode_still_clears(self, client, user) -> None:
+        """CONTRACT.md 4: "`default_mode: null` clears it" - the client then
+        shows Role Selection."""
+        expect_status(
+            await client.patch(
+                ME, json={"preferences": {"default_mode": "driver"}}, headers=user.headers
+            ),
+            200,
+        )
+        body = expect_status(
+            await client.patch(
+                ME, json={"preferences": {"default_mode": None}}, headers=user.headers
+            ),
+            200,
+        )
+        assert body["preferences"]["default_mode"] is None
+
+    async def test_the_notifications_sub_object_still_merges(self, client, user) -> None:
+        """A null inside `notifications` is refused, which must not have turned
+        the sub-object into a replace."""
+        body = expect_status(
+            await client.patch(
+                ME,
+                json={"preferences": {"notifications": {"email": False}}},
+                headers=user.headers,
+            ),
+            200,
+        )
+        assert body["preferences"]["notifications"] == {
+            "email": False,
+            "push": True,
+            "websocket": True,
+        }
+
+
+class TestOnboardingNullability:
+    """Onboarding writes the same `UserPreferencesPatch`, so it must answer the
+    same way - that is the whole reason the write shape is shared."""
+
+    @pytest.mark.parametrize("key", ["smoking", "pets", "language", "theme", "notifications"])
+    async def test_a_null_preference_is_rejected(self, users, key: str) -> None:
+        response = await users.onboard_response(preferences={key: None})
+        expect_validation_error(response, field=key)
+
+    async def test_default_mode_null_is_accepted(self, users) -> None:
+        response = await users.onboard_response(preferences={"default_mode": None})
+        body = expect_status(response, 201)
+        assert body["preferences"]["default_mode"] is None
 
 
 class TestPatchCannotEscalate:
