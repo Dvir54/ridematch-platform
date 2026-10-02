@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: RideMatch API
-  version: 0.4.6
+  version: 0.4.7
   description: |
     Contract for the RideMatch monolith (FastAPI). Source of truth for backend, frontend and tests.
     See CONTRACT.md for conventions, state machines, business rules, error codes and the WebSocket protocol.
