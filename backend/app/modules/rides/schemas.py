@@ -72,7 +72,9 @@ class RideCreate(BaseModel):
     departure_time: InputDatetime
     capacity: Capacity
     price_per_seat: MoneyIn
-    preferences: RidePreferencesPatch | None = None
+    #: `NotNull` here as on `RideUpdate`: openapi.yaml marks `notes` as the one nullable field, and
+    #: the two write shapes have to answer a null the same way.
+    preferences: NotNull[RidePreferencesPatch] = None
     notes: Notes | None = None
 
 
