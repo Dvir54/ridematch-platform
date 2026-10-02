@@ -21,6 +21,7 @@ from support.contract import ContractValidator, validator
 from support.db import TestDatabase
 from support.factories import Users
 from support.keys import KeyPair, TokenSigner
+from support.ratings import Ratings
 from support.rides import RideRequests, Rides
 from support.search import Search
 
@@ -142,6 +143,11 @@ def requests(client, users: Users) -> RideRequests:
 @pytest.fixture
 def search(client) -> Search:
     return Search(client)
+
+
+@pytest.fixture
+def ratings(client) -> Ratings:
+    return Ratings(client)
 
 
 @pytest.fixture
