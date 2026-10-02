@@ -198,3 +198,39 @@ async def offer(rides: Rides, driver):
     """One ride, departing far enough ahead that it is editable and not yet
     startable (CONTRACT.md §3: start is allowed from departure - 2h)."""
     return await rides.offer(driver)
+
+
+@pytest.fixture
+def outbox(app):
+    """The memory email outbox (EMAIL_BACKEND=memory), cleared before and
+    after each test so no test can see another test's mail."""
+    from support.notifications import clear_outbox
+    from support.notifications import outbox as _outbox
+
+    clear_outbox()
+    yield _outbox()
+    clear_outbox()
+
+
+@pytest.fixture
+def ws_client(backend_app):
+    """A sync WebSocket-capable client, on its *own* app/engine/lifespan.
+
+    `TestClient.websocket_connect` drives the ASGI app from a background
+    thread with its own event loop. Reusing the shared `app` fixture's engine
+    there breaks asyncpg ("attached to a different loop"), so this builds a
+    second app instance instead - same settings (same process env), separate
+    engine, lazily connected only from the portal thread that actually uses
+    it. `backend_app` is only depended on so a missing backend still skips
+    instead of raising ImportError here.
+    """
+    from starlette.testclient import TestClient
+
+    from app.main import create_app
+
+    # No API_PREFIX in base_url: TestClient.websocket_connect builds the ASGI
+    # scope from the URL itself and does not merge a base_url sub-path into it
+    # the way ordinary HTTP requests do, so every path used on this client
+    # (REST or WS) must spell out API_PREFIX itself.
+    with TestClient(create_app(), base_url="http://testserver") as test_client:
+        yield test_client
