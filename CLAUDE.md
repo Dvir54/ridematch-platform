@@ -6,7 +6,7 @@ From Phase 7 on, **one** Claude Code session works in `C:\Users\dvir5\Projects\r
 Dvir decides anything not covered here. Root files (`CLAUDE.md`, `PLAN.md`, `docs/`, `docker-compose.yml`, `.claude/`, `.gitignore`, `.env.example`) change only with his OK.
 
 ## Source of truth
-- `contracts/openapi.yaml` gives the shapes, `contracts/CONTRACT.md` gives the behavior, and `contracts/schema.sql` gives the DB.
+- `contracts/openapi.yaml` gives the shapes, `contracts/CONTRACT.md` gives the behavior, and the Alembic migrations (`backend/alembic/versions`) give the DB. `contracts/schema.sql` is the verified reference: `tests/migrations` keeps it identical to `alembic upgrade head`, so a schema change updates both.
 - Read only the CONTRACT/openapi sections the current chunk needs.
 - The contract wins over assumptions. If it's ambiguous or wrong, **stop and ask Dvir**. Never quietly implement your own interpretation.
 - A contract change: bump the version (CONTRACT.md §1), commit it on its own (`contract: …`), and keep backend, frontend types (`npm run gen:api`) and tests in step in the same chunk.
