@@ -2,7 +2,7 @@
 # Free tier: Render free web service + Key Value + Static Site; Postgres on Neon's free tier
 # (Render's free Postgres is deleted after 30 days).
 #
-# Before the first Blueprint sync, replace every `ridematch.example` with your domain:
+# Domain: ridematchapp.com.
 #   app.<domain>    the frontend (Static Site)
 #   api.<domain>    the API (web service)
 #   clerk.<domain>  Clerk's production Frontend API
@@ -40,13 +40,13 @@ services:
       - key: LOG_LEVEL
         value: INFO
       - key: CORS_ORIGINS
-        value: https://app.ridematch.example
+        value: https://app.ridematchapp.com
       - key: CLERK_AUTHORIZED_PARTIES
-        value: https://app.ridematch.example
+        value: https://app.ridematchapp.com
       - key: CLERK_ISSUER
-        value: https://clerk.ridematch.example
+        value: https://clerk.ridematchapp.com
       - key: CLERK_JWKS_URL
-        value: https://clerk.ridematch.example/.well-known/jwks.json
+        value: https://clerk.ridematchapp.com/.well-known/jwks.json
       - key: CLERK_JWT_KEY          # Clerk → API Keys → "JWKS Public Key" (PEM)
         sync: false
       - key: CLERK_SECRET_KEY       # sk_live_...
@@ -109,9 +109,9 @@ services:
       - key: NODE_VERSION
         value: "22"
       - key: VITE_API_BASE_URL
-        value: https://api.ridematch.example/api/v1
+        value: https://api.ridematchapp.com/api/v1
       - key: VITE_WS_URL
-        value: wss://api.ridematch.example/api/v1/ws
+        value: wss://api.ridematchapp.com/api/v1/ws
       - key: VITE_CLERK_PUBLISHABLE_KEY   # pk_live_...
         sync: false
       - key: VITE_MAPBOX_TOKEN            # public token restricted to https://app.<domain>
@@ -129,8 +129,8 @@ services:
         name: Content-Security-Policy
         value: >-
           default-src 'self';
-          script-src 'self' https://clerk.ridematch.example https://challenges.cloudflare.com;
-          connect-src 'self' https://api.ridematch.example wss://api.ridematch.example https://clerk.ridematch.example https://api.mapbox.com https://*.ingest.sentry.io https://*.ingest.de.sentry.io;
+          script-src 'self' https://clerk.ridematchapp.com https://challenges.cloudflare.com;
+          connect-src 'self' https://api.ridematchapp.com wss://api.ridematchapp.com https://clerk.ridematchapp.com https://api.mapbox.com https://*.ingest.sentry.io https://*.ingest.de.sentry.io;
           img-src 'self' data: https://img.clerk.com;
           style-src 'self' 'unsafe-inline';
           font-src 'self';
