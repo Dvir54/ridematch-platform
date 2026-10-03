@@ -17,6 +17,7 @@ from support.assertions import expect_error, expect_status, expect_validation_er
 from support.factories import onboarding_payload
 from support.keys import auth_header
 from support.rides import STARTABLE_HOURS, notification_types, ride_in_status
+from support.websocket import authed_socket
 
 API = env.API_PREFIX
 
@@ -159,7 +160,7 @@ class TestDeactivateReactivate:
             f"{API}/users/me/onboarding", json=onboarding_payload(), headers=auth_header(token)
         ).json()
 
-        with ws_client.websocket_connect(f"{API}/ws?token={token}") as ws:
+        with authed_socket(ws_client, token) as ws:
             response = ws_client.post(
                 f"{API}/admin/users/{onboarded['id']}/deactivate", headers=admin.headers
             )

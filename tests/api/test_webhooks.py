@@ -14,6 +14,7 @@ from support.assertions import expect_error, expect_no_content
 from support.factories import onboarding_payload
 from support.keys import auth_header
 from support.webhooks import event_body, sign, unique_svix_id, user_deleted_data, user_updated_data
+from support.websocket import authed_socket
 
 WEBHOOK = "/webhooks/clerk"
 API = env.API_PREFIX
@@ -100,7 +101,7 @@ class TestUserDeleted:
             f"{API}/users/me/onboarding", json=onboarding_payload(), headers=auth_header(token)
         )
 
-        with ws_client.websocket_connect(f"{API}/ws?token={token}") as ws:
+        with authed_socket(ws_client, token) as ws:
             body = event_body("user.deleted", user_deleted_data(sub))
             headers = sign(svix_id=unique_svix_id(), body=body)
             response = ws_client.post(f"{API}{WEBHOOK}", content=body, headers=headers)

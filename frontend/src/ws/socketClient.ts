@@ -27,9 +27,9 @@ export interface NotificationSocketOptions {
 
 const PING_INTERVAL_MS = 25_000
 /**
- * CONTRACT §6: a deactivated account closes with 4403 — nothing to reconnect
- * to. Every other close (4401 for no/expired token, or a transport drop) gets
- * a fresh token and reconnects with backoff.
+ * CONTRACT §6: a deactivated account (or a page origin the API refuses) closes
+ * with 4403 — nothing to reconnect to. Every other close (4401 for a bad or
+ * expired token, or a transport drop) gets a fresh token and reconnects with backoff.
  */
 const CODE_DEACTIVATED = 4403
 
@@ -64,7 +64,9 @@ function defaultCreateSocket(url: string): MinimalSocket {
 
 /**
  * Owns one connection to `GET /ws` (CONTRACT §6): fetches a fresh token before
- * every attempt, pings every 25s so the server doesn't drop an idle socket,
+ * every attempt and sends it as the first message (never in the URL, which ends
+ * up in logs), counts the socket open once the server answers `ready`, pings
+ * every 25s so the server doesn't drop an idle socket,
  * and reconnects with capped exponential backoff on 4401 or any transport
  * drop. A 4403 (deactivated) stops reconnecting — the account is gone either way.
  */
@@ -104,13 +106,11 @@ export class NotificationSocket {
     }
 
     const createSocket = this.opts.createSocket ?? defaultCreateSocket
-    const socket = createSocket(`${this.opts.url}?token=${encodeURIComponent(token)}`)
+    const socket = createSocket(this.opts.url)
     this.socket = socket
 
     socket.onopen = () => {
-      this.attempt = 0
-      this.setStatus('open')
-      this.startPing()
+      socket.send(JSON.stringify({ event: 'auth', token }))
     }
     socket.onmessage = (event) => this.handleMessage(event.data)
     socket.onclose = (event) => this.handleClose(event.code)
@@ -137,11 +137,13 @@ export class NotificationSocket {
     } catch {
       return
     }
-    if (
-      message !== null &&
-      typeof message === 'object' &&
-      (message as { event?: unknown }).event === 'notification'
-    ) {
+    if (message === null || typeof message !== 'object') return
+    const event = (message as { event?: unknown }).event
+    if (event === 'ready') {
+      this.attempt = 0
+      this.setStatus('open')
+      this.startPing()
+    } else if (event === 'notification') {
       this.opts.onNotification((message as { data: Notification }).data)
     }
   }

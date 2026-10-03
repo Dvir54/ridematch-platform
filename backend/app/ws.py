@@ -1,7 +1,9 @@
-"""The WebSocket of CONTRACT.md §6: `GET /api/v1/ws?token=<clerk_session_token>`.
+"""The WebSocket of CONTRACT.md §6: `GET /api/v1/ws`, no token in the URL.
 
-- the token is checked once, at connect: invalid/expired or no profile closes with **4401**,
-  a deactivated account with **4403**
+- the page's `Origin` must be one of `CORS_ORIGINS`, or the socket closes with **4403**
+- the first message must be `{"event": "auth", "token": ...}` within `WS_AUTH_TIMEOUT_SECONDS`;
+  the token is checked once: invalid/expired, no profile, any other first message or a timeout
+  closes with **4401**, a deactivated account with **4403**; success answers `{"event": "ready"}`
 - the connection is counted in Redis under `ws:online:{user_id}` (several tabs per user)
 - the client pings every 25s and the server answers `{"event": "pong"}`; 60s without a ping
   closes the socket
@@ -18,7 +20,7 @@ from collections.abc import Sequence
 from contextlib import suppress
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Request, WebSocket, WebSocketDisconnect
 from redis.asyncio import Redis
 from sqlalchemy import select
 from starlette.websockets import WebSocketDisconnected
@@ -111,10 +113,28 @@ WsRegistryDep = Annotated[WsRegistry, Depends(get_ws_registry)]
 router = APIRouter()
 
 
-async def _authenticate(websocket: WebSocket, token: str | None) -> User | None:
+async def _first_message_token(websocket: WebSocket) -> str | None:
+    """The token from the `auth` message, or None if the first message is anything else."""
+    timeout = websocket.app.state.settings.ws_auth_timeout_seconds
+    try:
+        raw = await asyncio.wait_for(websocket.receive_text(), timeout=timeout)
+        payload = json.loads(raw)
+    except (TimeoutError, ValueError, KeyError):
+        return None
+    if not isinstance(payload, dict) or payload.get("event") != "auth":
+        return None
+    token = payload.get("token")
+    return token if isinstance(token, str) and token else None
+
+
+async def _authenticate(websocket: WebSocket) -> User | None:
     """The §6 handshake. Returns None once the socket has been closed with its code."""
-    if not token:
-        await websocket.close(code=WS_UNAUTHENTICATED, reason="Missing token.")
+    if websocket.headers.get("origin") not in websocket.app.state.settings.cors_origins:
+        await websocket.close(code=WS_DEACTIVATED, reason="Origin not allowed.")
+        return None
+    token = await _first_message_token(websocket)
+    if token is None:
+        await websocket.close(code=WS_UNAUTHENTICATED, reason="Authenticate first.")
         return None
     try:
         claims = await websocket.app.state.clerk_verifier.verify(token)
@@ -132,18 +152,19 @@ async def _authenticate(websocket: WebSocket, token: str | None) -> User | None:
     if not user.is_active:
         await websocket.close(code=WS_DEACTIVATED, reason="Account deactivated.")
         return None
+    await websocket.send_json({"event": "ready"})
     return user
 
 
 @router.websocket("/ws")
-async def notifications_socket(
-    websocket: WebSocket,
-    token: Annotated[str | None, Query(description="A fresh Clerk session token")] = None,
-) -> None:
+async def notifications_socket(websocket: WebSocket) -> None:
     # Accepted first: a close code only reaches the client over an open socket, and §6 is
     # written around the client reading 4401 and 4403.
     await websocket.accept()
-    user = await _authenticate(websocket, token)
+    try:
+        user = await _authenticate(websocket)
+    except (WebSocketDisconnect, WebSocketDisconnected):
+        return
     if user is None:
         return
 

@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     clerk_authorized_parties: CommaList = []
     clerk_webhook_signing_secret: str = ""
 
+    # ── WebSocket ──
+    ws_auth_timeout_seconds: float = 10.0
+
     # ── Matching ──
     search_radius_km: float = 10.0
     match_min_score: float = 40.0
