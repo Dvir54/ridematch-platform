@@ -91,3 +91,119 @@ jobs:
           # failure, not a reason to skip.
           RIDEMATCH_REQUIRE_BACKEND: ${{ steps.backend.outputs.present == 'true' && '1' || '0' }}
         run: uv run pytest -q
+
+  # Phase 7e: Schemathesis against contracts/openapi.yaml. Starts its own uvicorn.
+  fuzz:
+    name: schemathesis
+    runs-on: ubuntu-latest
+
+    services:
+      db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ridematch
+          POSTGRES_PASSWORD: ridematch
+          POSTGRES_DB: ridematch
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ridematch"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://ridematch:ridematch@localhost:5432/ridematch_test
+      TEST_REDIS_URL: redis://localhost:6379/15
+      RIDEMATCH_REQUIRE_BACKEND: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Create the test database
+        run: psql -d ridematch -c 'CREATE DATABASE ridematch_test'
+      - name: Fuzz the API
+        working-directory: tests
+        run: uv run pytest fuzz -q
+
+  # Phase 7d: Playwright against the full stack and a Clerk dev instance.
+  # Needs repo secrets CLERK_SECRET_KEY and VITE_CLERK_PUBLISHABLE_KEY.
+  e2e:
+    name: playwright
+    runs-on: ubuntu-latest
+
+    services:
+      db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ridematch
+          POSTGRES_PASSWORD: ridematch
+          POSTGRES_DB: ridematch
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ridematch"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://ridematch:ridematch@localhost:5432/ridematch_test
+      TEST_REDIS_URL: redis://localhost:6379/15
+      RIDEMATCH_REQUIRE_BACKEND: "1"
+      E2E_DATABASE_URL: postgresql+asyncpg://ridematch:ridematch@localhost:5432/ridematch_test
+      E2E_REDIS_URL: redis://localhost:6379/14
+      CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+      VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+      # Must match the Clerk instance's session token and the frontend origin.
+      CLERK_ISSUER: ${{ secrets.CLERK_ISSUER }}
+      CLERK_JWKS_URL: ${{ secrets.CLERK_JWKS_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Create the test database and its schema
+        run: psql -d ridematch -c 'CREATE DATABASE ridematch_test'
+      - name: Build the schema (any pytest run does)
+        working-directory: tests
+        run: uv run pytest -q api/test_health.py
+      - name: Install the backend and frontend
+        run: |
+          (cd backend && uv sync)
+          (cd frontend && npm ci)
+      - name: Install Playwright
+        working-directory: tests/e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Run the E2E flows
+        working-directory: tests/e2e
+        run: npm test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: tests/e2e/playwright-report
