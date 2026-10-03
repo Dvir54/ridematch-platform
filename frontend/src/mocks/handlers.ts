@@ -42,9 +42,8 @@ function mergePreferences(
 }
 
 const userHandlers = [
-  http.get(`${base}/health`, () =>
-    HttpResponse.json({ status: 'ok', db: true, redis: true }),
-  ),
+  http.get(`${base}/health`, () => HttpResponse.json({ status: 'ok' })),
+  http.get(`${base}/ready`, () => HttpResponse.json({ status: 'ready', db: true, redis: true })),
 
   http.get(`${base}/users/me`, ({ request }) => {
     if (!signedIn(request)) return unauthenticated()

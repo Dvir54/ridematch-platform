@@ -141,6 +141,9 @@ class ContractValidator:
 
         responses = self.operation(method, template).get("responses", {})
         entry = responses.get(str(status))
+        if entry is None and status == 413:
+            # Documented once, globally, for every operation (openapi PayloadTooLarge, §5).
+            entry = {"$ref": "#/components/responses/PayloadTooLarge"}
         if entry is None:
             raise ContractError(
                 f"{method.upper()} {template} returned {status}, which "

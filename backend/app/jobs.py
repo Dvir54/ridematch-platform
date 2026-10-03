@@ -9,6 +9,9 @@ Three passes, each callable on its own with an injected `now` so tests control t
 `run_all` runs the three in that order, and `jobs_loop` runs `run_all` every minute from app
 startup when `JOBS_ENABLED=true`. Each pass commits through `commit_and_push`, so the WebSocket
 push leaves after the commit, exactly as in a request.
+
+`run_exclusive` wraps a pass in a Postgres advisory lock, so when a deploy briefly runs two
+processes only one of them runs each minute's pass (no duplicate reminders or emails).
 """
 
 import asyncio
@@ -16,8 +19,8 @@ import logging
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.clock import utc_now
 from app.config import Settings
@@ -34,6 +37,8 @@ logger = logging.getLogger(__name__)
 
 #: How often `jobs_loop` runs a pass — §7 says the reminder job runs every minute.
 JOB_INTERVAL_SECONDS = 60
+#: Arbitrary, fixed `pg_advisory_lock` key shared by every process running the jobs.
+JOBS_LOCK_KEY = 727_001
 
 
 async def _requests_in(
@@ -235,14 +240,53 @@ async def run_all(db: AsyncSession, settings: Settings, now: datetime) -> None:
     await run_stale_cancel(db, settings, now)
 
 
+async def run_exclusive(
+    engine: AsyncEngine,
+    sessionmaker: async_sessionmaker[AsyncSession],
+    settings: Settings,
+    now: datetime,
+    *,
+    pusher=None,
+) -> bool:
+    """`run_all` under the jobs advisory lock. Returns False (and does nothing) if another
+    process holds it. The lock lives on its own connection, so it spans the passes' commits and
+    is released if this process dies."""
+    async with engine.connect() as lock_connection:
+        got = (
+            await lock_connection.execute(
+                text("SELECT pg_try_advisory_lock(:key)"), {"key": JOBS_LOCK_KEY}
+            )
+        ).scalar()
+        await lock_connection.commit()
+        if not got:
+            return False
+        try:
+            async with sessionmaker() as session:
+                if pusher is not None:
+                    session.info[PUSHER_KEY] = pusher
+                await run_all(session, settings, now)
+        finally:
+            await lock_connection.execute(
+                text("SELECT pg_advisory_unlock(:key)"), {"key": JOBS_LOCK_KEY}
+            )
+            await lock_connection.commit()
+    return True
+
+
 async def jobs_loop(app: FastAPI) -> None:
     """One pass a minute, each in its own session. Started by the app lifespan."""
     settings: Settings = app.state.settings
     while True:
         try:
-            async with app.state.sessionmaker() as session:
-                session.info[PUSHER_KEY] = app.state.ws_registry.push
-                await run_all(session, settings, utc_now())
+            ran = await run_exclusive(
+                app.state.engine,
+                app.state.sessionmaker,
+                settings,
+                utc_now(),
+                pusher=app.state.ws_registry.push,
+            )
+            if not ran:
+                logger.info("Another process holds the jobs lock; skipping this pass")
         except asyncio.CancelledError:
             raise
         except Exception:

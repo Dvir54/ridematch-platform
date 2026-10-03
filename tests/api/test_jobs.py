@@ -147,3 +147,52 @@ class TestStaleCancel:
         offer = await rides.offer(departure_in=1.0)
         departure = clock.parse(offer.ride["departure_time"])
         assert await _run(backend_app, "stale_cancel", now=departure + timedelta(hours=11)) == 0
+
+
+class TestJobsLock:
+    """A deploy briefly runs two processes; the advisory lock lets one run each pass."""
+
+    async def test_a_pass_is_skipped_while_another_process_holds_the_lock(
+        self, rides, db, backend_app
+    ) -> None:
+        from app import jobs
+
+        offer = await rides.offer(departure_in=1.0)
+        now = clock.parse(offer.ride["departure_time"]) - timedelta(minutes=30)
+        state = backend_app.state
+
+        pool = await db._get_pool()
+        async with pool.acquire() as other_process:
+            await other_process.execute("SELECT pg_advisory_lock($1)", jobs.JOBS_LOCK_KEY)
+            try:
+                ran = await jobs.run_exclusive(
+                    state.engine, state.sessionmaker, state.settings, now
+                )
+            finally:
+                await other_process.execute("SELECT pg_advisory_unlock($1)", jobs.JOBS_LOCK_KEY)
+
+        assert ran is False
+        assert "ride_reminder" not in await notification_types(db, offer.driver.id)
+
+    async def test_concurrent_passes_write_one_set_of_reminders(
+        self, rides, db, backend_app
+    ) -> None:
+        import asyncio
+
+        from app import jobs
+
+        offer = await rides.offer(departure_in=1.0)
+        now = clock.parse(offer.ride["departure_time"]) - timedelta(minutes=30)
+        state = backend_app.state
+
+        results = await asyncio.gather(
+            *(
+                jobs.run_exclusive(state.engine, state.sessionmaker, state.settings, now)
+                for _ in range(2)
+            )
+        )
+
+        assert True in results
+        assert (await notification_types(db, offer.driver.id)).count("ride_reminder") == 1
+        # Released afterwards, so the next pass can run.
+        assert await jobs.run_exclusive(state.engine, state.sessionmaker, state.settings, now)

@@ -12,10 +12,10 @@ const error = (code: string) =>
   new ApiError(409, { code, message: 'raw server text nobody should read' })
 
 /**
- * The one code no screen can ever hit: Svix calls `/webhooks/clerk` directly and
- * that endpoint has `security: []`, so a browser is never on that path.
+ * Codes no screen can ever hit: Svix calls `/webhooks/clerk` directly, and only the
+ * host's health check calls `/ready`, so a browser is never on either path.
  */
-const NEVER_SEEN_BY_A_SCREEN = ['INVALID_WEBHOOK_SIGNATURE']
+const NEVER_SEEN_BY_A_SCREEN = ['INVALID_WEBHOOK_SIGNATURE', 'NOT_READY']
 
 describe('error messages', () => {
   it('has a written message for every code a screen can hit', () => {

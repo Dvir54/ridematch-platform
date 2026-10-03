@@ -20,9 +20,11 @@ from app.db import create_engine, create_sessionmaker
 from app.errors import install_error_handlers
 from app.health import router as health_router
 from app.jobs import jobs_loop
+from app.limits import BodySizeLimitMiddleware
 from app.logging_setup import RequestLogMiddleware, configure_logging
 from app.modules.admin.router import router as admin_router
 from app.modules.feedback.router import router as feedback_router
+from app.modules.notifications import email as email_delivery
 from app.modules.notifications.router import router as notifications_router
 from app.modules.requests.router import router as requests_router
 from app.modules.rides.router import router as rides_router
@@ -72,6 +74,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 jobs_task.cancel()
                 with suppress(asyncio.CancelledError):
                     await jobs_task
+            await email_delivery.drain(wait_seconds=10)
             await app.state.engine.dispose()
             await app.state.redis.aclose()
 
@@ -94,6 +97,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.ws_registry = WsRegistry(app.state.redis)
     app.state.clerk_verifier = ClerkVerifier(settings)
 
+    # Inside CORS, so a 413 still carries the CORS headers the browser needs to read it.
+    app.add_middleware(BodySizeLimitMiddleware)
     if settings.cors_origins:
         app.add_middleware(
             CORSMiddleware,

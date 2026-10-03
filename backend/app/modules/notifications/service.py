@@ -14,12 +14,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import ws_push
 from app.config import Settings
 from app.errors import Forbidden, NotFound
-from app.modules.notifications.email import send_email
+from app.modules.notifications import email as email_delivery
 from app.modules.notifications.models import Notification
 from app.modules.notifications.schemas import NotificationOut
 
-#: Re-exported so services commit through one call (`db.commit()` would push nothing).
-commit_and_push = ws_push.commit_and_push
+#: `db.info` key: `(settings, user_id, EmailContent)` waiting for the commit.
+EMAIL_PENDING_KEY = "email_pending"
+
+
+async def commit_and_push(db: AsyncSession) -> None:
+    """Services commit through this one call (`db.commit()` would push and send nothing).
+
+    Commit, then push what the transaction queued, then hand its emails to the mailer. The
+    queues are taken before the commit, so a failed commit sends nothing.
+    """
+    emails = db.info.pop(EMAIL_PENDING_KEY, [])
+    await ws_push.commit_and_push(db)
+    for settings, user_id, content in emails:
+        email_delivery.dispatch(
+            settings, content.to, content.subject, content.body, user_id=user_id
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,9 +108,9 @@ async def notify(
     push: bool = True,
     now: datetime | None = None,
 ) -> Notification:
-    """Write the row, send the email when `email` is given, and queue the WebSocket push.
+    """Write the row, and queue the email (when `email` is given) and the WebSocket push.
 
-    The push leaves only once the caller calls `commit_and_push` (CONTRACT.md §4).
+    Both leave only once the caller calls `commit_and_push` (CONTRACT.md §4).
     """
     notification = await create_notification(
         db,
@@ -109,7 +123,7 @@ async def notify(
         now=now,
     )
     if email is not None:
-        await send_email(settings, email.to, email.subject, email.body)
+        db.info.setdefault(EMAIL_PENDING_KEY, []).append((settings, user_id, email))
     if push:
         ws_push.collect(db, user_id, ws_message(notification))
     return notification

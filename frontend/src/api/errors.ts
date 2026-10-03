@@ -29,6 +29,8 @@ export const API_ERROR_CODES = [
   'UNDERAGE',
   'TERMS_NOT_ACCEPTED',
   'DEPARTURE_IN_PAST',
+  'PAYLOAD_TOO_LARGE',
+  'NOT_READY',
 ] as const
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number]
@@ -102,6 +104,7 @@ const MESSAGES: Record<string, string> = {
   UNDERAGE: 'You must be 18 or older to use RideMatch.',
   TERMS_NOT_ACCEPTED: 'Accept the terms to continue.',
   DEPARTURE_IN_PAST: 'Pick a departure time in the future.',
+  PAYLOAD_TOO_LARGE: 'That is too much text to send. Shorten it and try again.',
   NETWORK_ERROR: "Can't reach RideMatch. Check your connection and try again.",
   UNEXPECTED_RESPONSE: 'Something went wrong on our side. Try again.',
 }
