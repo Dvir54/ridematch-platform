@@ -76,7 +76,10 @@ jobs:
       - name: Lint the backend
         if: steps.backend.outputs.present == 'true'
         working-directory: backend
-        run: uv run ruff check .
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run python -c "import app.main"
 
       - name: Lint the tests
         working-directory: tests
@@ -91,6 +94,39 @@ jobs:
           # failure, not a reason to skip.
           RIDEMATCH_REQUIRE_BACKEND: ${{ steps.backend.outputs.present == 'true' && '1' || '0' }}
         run: uv run pytest -q
+
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test -- --run
+      - name: Production build (no mocks in dist)
+        env:
+          VITE_API_BASE_URL: https://api.example.invalid/api/v1
+          VITE_WS_URL: wss://api.example.invalid/api/v1/ws
+        run: |
+          npm run build
+          test ! -e dist/mockServiceWorker.js
+          ! ls dist/assets | grep -q '^browser-'
+
+  docker:
+    name: backend image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t ridematch-backend backend
 
   # Phase 7e: Schemathesis against contracts/openapi.yaml. Starts its own uvicorn.
   fuzz:
