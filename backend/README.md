@@ -71,6 +71,58 @@ python -m app.admin_cli revoke <email>
 python -m app.admin_cli anonymise <email>   # a deletion request made outside Clerk
 ```
 
+## Deploy on Render
+
+`render.yaml` (repo root) is a Render Blueprint: the API (`ridematch-api`, Docker, 1 instance,
+`starter`), Postgres 16 (`ridematch-db`), Key Value (`ridematch-kv`) and the frontend Static Site
+(`ridematch-web`, SPA rewrite, CSP/HSTS/`nosniff`/Referrer-Policy/`frame-ancestors 'none'`), all in
+Frankfurt. Every production variable is listed in `.env.example` under "Production".
+
+**Before the first deploy (outside Render)**
+1. Pick the domain. Replace every `ridematch.example` in `render.yaml` with it (the API URLs, the
+   Clerk issuer and the CSP), run `bash scripts/check-all.sh`, commit, push `main`.
+2. Clerk: create the **production** instance for `<domain>` and add its DNS records
+   (`clerk.<domain>` etc.). Note the `pk_live_`/`sk_live_` keys and the **JWKS Public Key** (PEM).
+   Allowed origin: `https://app.<domain>`.
+3. SMTP: a provider account with `<domain>` verified (SPF/DKIM); note host, port, user, password.
+4. Mapbox: a public token restricted to `https://app.<domain>`.
+5. Sentry (optional): one backend and one frontend project; note both DSNs.
+
+**Create the services**
+1. Render → New → **Blueprint** → connect the GitHub repo, branch `main`. Render reads
+   `render.yaml` and asks for every `sync: false` value: the Clerk keys, PEM and webhook secret
+   (enter a placeholder `whsec_` value for now if the endpoint doesn't exist yet), the SMTP
+   settings, `EMAIL_FROM`, the Sentry DSNs, `VITE_CLERK_PUBLISHABLE_KEY`, `VITE_MAPBOX_TOKEN`.
+2. Apply. Render creates Postgres and Key Value, builds the image, runs `alembic upgrade head`
+   as the pre-deploy command, starts uvicorn and waits for `/api/v1/ready` to return 200. If the
+   API refuses to start, its log lists every invalid production setting at once.
+3. Custom domains: `api.<domain>` on `ridematch-api`, `app.<domain>` on `ridematch-web`. Add the
+   DNS records Render shows; it issues the TLS certificates.
+4. Clerk → Webhooks: endpoint `https://api.<domain>/api/v1/webhooks/clerk`, events `user.updated`
+   and `user.deleted`. Put its signing secret in `CLERK_WEBHOOK_SIGNING_SECRET` on `ridematch-api`
+   (saving redeploys it).
+5. Sign up on `https://app.<domain>`, finish onboarding, then in `ridematch-api` → **Shell**:
+   `python -m app.admin_cli grant <your email>`.
+6. An uptime monitor (e.g. UptimeRobot) on `https://api.<domain>/api/v1/ready`.
+
+**Check the deploy**
+- `curl https://api.<domain>/api/v1/health` → `{"status":"ok"}`; `/ready` → `"status":"ready"`;
+  `/docs` → 404.
+- `curl -I https://app.<domain>/app/passenger/search` → 200 (the SPA rewrite) with the CSP, HSTS, `nosniff` and Referrer-Policy
+  headers.
+- Sign in, post a ride, see a live update; the browser console shows no CSP violations.
+
+**Every later release:** `bash scripts/check-all.sh`, push `main`. Only the changed side rebuilds
+(`buildFilter`). A failed migration or a `/ready` that never turns 200 aborts the deploy and the
+old version keeps serving.
+
+**Rollback:** Render → `ridematch-api` → Events → an earlier deploy → **Rollback**. Code only:
+the database is not downgraded, which is why migrations are expand/contract.
+
+**Keep:** `numInstances: 1`, no autoscaling, a plan that never sleeps, and no `--workers` (§4 of
+the plan). `ADMIN_EMAIL` stays unset. Changing a `VITE_*` value needs a frontend redeploy; it's
+baked into the bundle.
+
 ## Test hooks
 
 - `app.main:create_app(settings)` builds an app from an explicit `Settings` instance.

@@ -1,0 +1,153 @@
+# RideMatch on Render (PRODUCTION_READINESS_PLAN.md §0 D1, §14). Deploy steps: backend/README.md "Deploy on Render".
+#
+# Before the first Blueprint sync, replace every `ridematch.example` with your domain:
+#   app.<domain>    the frontend (Static Site)
+#   api.<domain>    the API (web service)
+#   clerk.<domain>  Clerk's production Frontend API
+# `sync: false` values are secrets or per-account values: Render asks for them when the
+# Blueprint is created, and they never live in git.
+
+services:
+  # ── API: one instance, one uvicorn process, never sleeps (§4) ──
+  - type: web
+    name: ridematch-api
+    runtime: docker
+    dockerContext: ./backend
+    dockerfilePath: ./backend/Dockerfile
+    region: frankfurt
+    plan: starter                 # paid: never sleeps, allows a pre-deploy command and the Shell
+    numInstances: 1               # no autoscaling: the WS registry and jobs loop are in-process
+    branch: main
+    autoDeployTrigger: commit
+    buildFilter:
+      paths: ["backend/**"]
+    healthCheckPath: /api/v1/ready
+    preDeployCommand: alembic upgrade head
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: PORT
+        value: "8000"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: CORS_ORIGINS
+        value: https://app.ridematch.example
+      - key: CLERK_AUTHORIZED_PARTIES
+        value: https://app.ridematch.example
+      - key: CLERK_ISSUER
+        value: https://clerk.ridematch.example
+      - key: CLERK_JWKS_URL
+        value: https://clerk.ridematch.example/.well-known/jwks.json
+      - key: CLERK_JWT_KEY          # Clerk → API Keys → "JWKS Public Key" (PEM)
+        sync: false
+      - key: CLERK_SECRET_KEY       # sk_live_...
+        sync: false
+      - key: CLERK_WEBHOOK_SIGNING_SECRET   # whsec_... of the https://api.<domain>/api/v1/webhooks/clerk endpoint
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ridematch-db
+          property: connectionString
+      - key: DB_POOL_SIZE
+        value: "5"
+      - key: DB_MAX_OVERFLOW
+        value: "10"
+      - key: DB_COMMAND_TIMEOUT_SECONDS
+        value: "30"
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: ridematch-kv
+          property: connectionString
+      - key: WS_AUTH_TIMEOUT_SECONDS
+        value: "10"
+      - key: EMAIL_BACKEND
+        value: smtp
+      - key: EMAIL_FROM             # e.g. noreply@<domain>, verified with the SMTP provider
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT              # 587 (STARTTLS) or 465 (implicit TLS)
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: JOBS_ENABLED
+        value: "true"
+      - key: SENTRY_DSN             # backend project DSN; leave empty to turn Sentry off
+        sync: false
+      # ADMIN_EMAIL stays unset in production: grant admins with `python -m app.admin_cli grant`.
+
+  # ── Redis (Render Key Value): WebSocket presence; private network only ──
+  - type: keyvalue
+    name: ridematch-kv
+    region: frankfurt
+    plan: starter
+    ipAllowList: []
+    maxmemoryPolicy: noeviction
+
+  # ── Frontend: static files, SPA rewrite, security headers (§11.8) ──
+  - type: web
+    name: ridematch-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    branch: main
+    autoDeployTrigger: commit
+    buildFilter:
+      paths: ["frontend/**"]
+    envVars:                        # build-time, baked into the bundle, public by design
+      - key: NODE_VERSION
+        value: "22"
+      - key: VITE_API_BASE_URL
+        value: https://api.ridematch.example/api/v1
+      - key: VITE_WS_URL
+        value: wss://api.ridematch.example/api/v1/ws
+      - key: VITE_CLERK_PUBLISHABLE_KEY   # pk_live_...
+        sync: false
+      - key: VITE_MAPBOX_TOKEN            # public token restricted to https://app.<domain>
+        sync: false
+      - key: VITE_SENTRY_DSN              # frontend project DSN; empty = off
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      # Clerk: its JS and API on clerk.<domain>, Turnstile bot protection, avatars, injected styles.
+      # Sentry: the EU and US ingest hosts. Fonts are self-hosted.
+      - path: /*
+        name: Content-Security-Policy
+        value: >-
+          default-src 'self';
+          script-src 'self' https://clerk.ridematch.example https://challenges.cloudflare.com;
+          connect-src 'self' https://api.ridematch.example wss://api.ridematch.example https://clerk.ridematch.example https://api.mapbox.com https://*.ingest.sentry.io https://*.ingest.de.sentry.io;
+          img-src 'self' data: https://img.clerk.com;
+          style-src 'self' 'unsafe-inline';
+          font-src 'self';
+          frame-src https://challenges.cloudflare.com;
+          worker-src 'self' blob:;
+          object-src 'none';
+          base-uri 'self';
+          form-action 'self';
+          frame-ancestors 'none'
+      - path: /*
+        name: Strict-Transport-Security
+        value: max-age=31536000
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+
+databases:
+  - name: ridematch-db
+    region: frankfurt
+    plan: basic-256mb
+    postgresMajorVersion: "16"
+    databaseName: ridematch
+    user: ridematch
+    ipAllowList: []                 # private network only
