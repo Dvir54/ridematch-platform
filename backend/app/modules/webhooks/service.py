@@ -41,7 +41,7 @@ def verify_signature(
     except Exception as exc:
         raise BadRequest() from exc
 
-    signed_content = f"{svix_id}.{svix_timestamp}.{body.decode()}".encode()
+    signed_content = f"{svix_id}.{svix_timestamp}.".encode() + body
     expected = base64.b64encode(
         hmac.new(secret_bytes, signed_content, hashlib.sha256).digest()
     ).decode()

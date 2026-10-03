@@ -133,6 +133,14 @@ def install_error_handlers(app: FastAPI) -> None:
         if "int32 range" in str(exc.orig):
             error = NotFound()
             return JSONResponse(status_code=error.status_code, content=error.body())
+        # Postgres text can't hold NUL, which no field of ours legitimately contains.
+        if "cannot be converted to text" in str(exc.orig):
+            invalid = UnprocessableEntity(
+                "VALIDATION_ERROR",
+                "Request validation failed.",
+                details=[{"field": "body", "message": "Null characters are not allowed."}],
+            )
+            return JSONResponse(status_code=invalid.status_code, content=invalid.body())
         return await _unhandled(request, exc)
 
     @app.exception_handler(Exception)
