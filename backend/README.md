@@ -73,10 +73,17 @@ python -m app.admin_cli anonymise <email>   # a deletion request made outside Cl
 
 ## Deploy on Render
 
-`render.yaml` (repo root) is a Render Blueprint: the API (`ridematch-api`, Docker, 1 instance,
-`starter`), Postgres 16 (`ridematch-db`), Key Value (`ridematch-kv`) and the frontend Static Site
-(`ridematch-web`, SPA rewrite, CSP/HSTS/`nosniff`/Referrer-Policy/`frame-ancestors 'none'`), all in
-Frankfurt. Every production variable is listed in `.env.example` under "Production".
+`render.yaml` (repo root) is a Render Blueprint on the free tier: the API (`ridematch-api`,
+Docker, 1 instance), Key Value (`ridematch-kv`) and the frontend Static Site (`ridematch-web`, SPA
+rewrite, CSP/HSTS/`nosniff`/Referrer-Policy/`frame-ancestors 'none'`), all in Frankfurt. Postgres is
+**Neon**'s free tier (Render's free Postgres is deleted after 30 days). Every production variable is
+listed in `.env.example` under "Production". The only cost is the domain.
+
+Free-tier limits: the API sleeps after ~15 min idle and the first request wakes it (~1 min); the
+jobs loop (reminders, auto-complete) pauses while it sleeps. There is no pre-deploy step, so
+`alembic upgrade head` runs in the start command (`dockerCommand`), and no Shell, so admin tasks
+run from your machine against Neon. To leave the free tier: `plan: starter`, move the migration to
+`preDeployCommand`.
 
 **Before the first deploy (outside Render)**
 1. Pick the domain. Replace every `ridematch.example` in `render.yaml` with it (the API URLs, the
@@ -87,22 +94,27 @@ Frankfurt. Every production variable is listed in `.env.example` under "Producti
 3. SMTP: a provider account with `<domain>` verified (SPF/DKIM); note host, port, user, password.
 4. Mapbox: a public token restricted to `https://app.<domain>`.
 5. Sentry (optional): one backend and one frontend project; note both DSNs.
+6. Neon: a project, Postgres 16, region AWS Frankfurt (`eu-central-1`), database `ridematch`. Copy
+   the **direct** connection string (not the `-pooler` host: the pooler breaks asyncpg's prepared
+   statements and the jobs' advisory lock) and change its query to `?ssl=require` (asyncpg rejects
+   `sslmode` and `channel_binding`): `postgresql://user:pass@ep-xxx.eu-central-1.aws.neon.tech/ridematch?ssl=require`.
 
 **Create the services**
 1. Render → New → **Blueprint** → connect the GitHub repo, branch `main`. Render reads
-   `render.yaml` and asks for every `sync: false` value: the Clerk keys, PEM and webhook secret
+   `render.yaml` and asks for every `sync: false` value: `DATABASE_URL` (Neon, above), the Clerk keys, PEM and webhook secret
    (enter a placeholder `whsec_` value for now if the endpoint doesn't exist yet), the SMTP
    settings, `EMAIL_FROM`, the Sentry DSNs, `VITE_CLERK_PUBLISHABLE_KEY`, `VITE_MAPBOX_TOKEN`.
-2. Apply. Render creates Postgres and Key Value, builds the image, runs `alembic upgrade head`
-   as the pre-deploy command, starts uvicorn and waits for `/api/v1/ready` to return 200. If the
+2. Apply. Render creates Key Value, builds the image, and the start command runs
+   `alembic upgrade head` against Neon, then starts uvicorn and waits for `/api/v1/ready` to return 200. If the
    API refuses to start, its log lists every invalid production setting at once.
 3. Custom domains: `api.<domain>` on `ridematch-api`, `app.<domain>` on `ridematch-web`. Add the
    DNS records Render shows; it issues the TLS certificates.
 4. Clerk → Webhooks: endpoint `https://api.<domain>/api/v1/webhooks/clerk`, events `user.updated`
    and `user.deleted`. Put its signing secret in `CLERK_WEBHOOK_SIGNING_SECRET` on `ridematch-api`
    (saving redeploys it).
-5. Sign up on `https://app.<domain>`, finish onboarding, then in `ridematch-api` → **Shell**:
-   `python -m app.admin_cli grant <your email>`.
+5. Sign up on `https://app.<domain>`, finish onboarding, then make yourself admin from this folder
+   (Git Bash; the Neon URL from step 6):
+   `DATABASE_URL='<neon url>' uv run python -m app.admin_cli grant <your email>`.
 6. An uptime monitor (e.g. UptimeRobot) on `https://api.<domain>/api/v1/ready`.
 
 **Check the deploy**
@@ -119,7 +131,7 @@ old version keeps serving.
 **Rollback:** Render → `ridematch-api` → Events → an earlier deploy → **Rollback**. Code only:
 the database is not downgraded, which is why migrations are expand/contract.
 
-**Keep:** `numInstances: 1`, no autoscaling, a plan that never sleeps, and no `--workers` (§4 of
+**Keep:** `numInstances: 1`, no autoscaling, and no `--workers` (§4 of
 the plan). `ADMIN_EMAIL` stays unset. Changing a `VITE_*` value needs a frontend redeploy; it's
 baked into the bundle.
 

@@ -1,4 +1,6 @@
 # RideMatch on Render (PRODUCTION_READINESS_PLAN.md §0 D1, §14). Deploy steps: backend/README.md "Deploy on Render".
+# Free tier: Render free web service + Key Value + Static Site; Postgres on Neon's free tier
+# (Render's free Postgres is deleted after 30 days).
 #
 # Before the first Blueprint sync, replace every `ridematch.example` with your domain:
 #   app.<domain>    the frontend (Static Site)
@@ -8,21 +10,28 @@
 # Blueprint is created, and they never live in git.
 
 services:
-  # ── API: one instance, one uvicorn process, never sleeps (§4) ──
+  # ── API: one instance, one uvicorn process (§4). The free plan sleeps after ~15 min idle:
+  #    the first request wakes it (~1 min) and the jobs loop pauses meanwhile. `starter` never sleeps. ──
   - type: web
     name: ridematch-api
     runtime: docker
     dockerContext: ./backend
     dockerfilePath: ./backend/Dockerfile
     region: frankfurt
-    plan: starter                 # paid: never sleeps, allows a pre-deploy command and the Shell
+    plan: free
     numInstances: 1               # no autoscaling: the WS registry and jobs loop are in-process
     branch: main
     autoDeployTrigger: commit
     buildFilter:
       paths: ["backend/**"]
     healthCheckPath: /api/v1/ready
-    preDeployCommand: alembic upgrade head
+    # The free plan has no pre-deploy step, so the release runs at start: a failed migration exits,
+    # /ready never passes, and the deploy aborts with the old version still serving.
+    # (On `starter`: preDeployCommand: alembic upgrade head, and drop the alembic part here.)
+    dockerCommand: >-
+      sh -c "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port $PORT
+      --ws-max-size 65536 --timeout-graceful-shutdown 20 --proxy-headers --forwarded-allow-ips='*'
+      --no-server-header"
     envVars:
       - key: APP_ENV
         value: production
@@ -44,10 +53,8 @@ services:
         sync: false
       - key: CLERK_WEBHOOK_SIGNING_SECRET   # whsec_... of the https://api.<domain>/api/v1/webhooks/clerk endpoint
         sync: false
-      - key: DATABASE_URL
-        fromDatabase:
-          name: ridematch-db
-          property: connectionString
+      - key: DATABASE_URL           # Neon *direct* (not -pooler) URL, ending ?ssl=require (see README)
+        sync: false
       - key: DB_POOL_SIZE
         value: "5"
       - key: DB_MAX_OVERFLOW
@@ -83,7 +90,7 @@ services:
   - type: keyvalue
     name: ridematch-kv
     region: frankfurt
-    plan: starter
+    plan: free
     ipAllowList: []
     maxmemoryPolicy: noeviction
 
@@ -142,12 +149,3 @@ services:
       - path: /*
         name: Referrer-Policy
         value: strict-origin-when-cross-origin
-
-databases:
-  - name: ridematch-db
-    region: frankfurt
-    plan: basic-256mb
-    postgresMajorVersion: "16"
-    databaseName: ridematch
-    user: ridematch
-    ipAllowList: []                 # private network only
