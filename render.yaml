@@ -27,13 +27,10 @@ services:
     # /health, not /ready: Render probes every few seconds, and /ready's DB query would keep Neon's
     # free compute from ever scaling to zero (100 CU-hours/month).
     healthCheckPath: /api/v1/health
-    # The free plan has no pre-deploy step, so the release runs at start: a failed migration exits,
-    # /ready never passes, and the deploy aborts with the old version still serving.
-    # (On `starter`: preDeployCommand: alembic upgrade head, and drop the alembic part here.)
-    dockerCommand: >-
-      sh -c "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port $PORT
-      --ws-max-size 65536 --timeout-graceful-shutdown 20 --proxy-headers --forwarded-allow-ips='*'
-      --no-server-header"
+    # The free plan has no pre-deploy step, so start.sh runs `alembic upgrade head`, then uvicorn:
+    # a failed migration exits and the deploy aborts with the old version still serving.
+    # (On `starter`: preDeployCommand: alembic upgrade head, and drop dockerCommand.)
+    dockerCommand: sh start.sh
     envVars:
       - key: APP_ENV
         value: production

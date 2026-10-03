@@ -84,7 +84,7 @@ uptime monitor on `/api/v1/health` keeps it awake. Neon's free compute (100 CU-h
 lasts if the database can scale to zero, so nothing polls it: Render's health check is `/health`
 (no DB), and `JOBS_ENABLED=false` turns off the jobs loop (reminders, auto-complete, stale-cancel;
 set it to `true` on `ridematch-api` to bring them back, which catches up on anything overdue). There is no pre-deploy step, so
-`alembic upgrade head` runs in the start command (`dockerCommand`), and no Shell, so admin tasks
+`alembic upgrade head` runs in the start command (`dockerCommand: sh start.sh`), and no Shell, so admin tasks
 run from your machine against Neon. To leave the free tier: `plan: starter`, move the migration to
 `preDeployCommand`.
 
