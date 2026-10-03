@@ -9,7 +9,7 @@ export const clerkAppearance = {
     colorInputText: '#15233f',
     colorDanger: '#b3301c',
     borderRadius: '0.375rem',
-    fontFamily: '"Archivo", ui-sans-serif, system-ui, sans-serif',
+    fontFamily: '"Archivo Variable", ui-sans-serif, system-ui, sans-serif',
   },
   elements: {
     card: 'shadow-none border border-hairline',

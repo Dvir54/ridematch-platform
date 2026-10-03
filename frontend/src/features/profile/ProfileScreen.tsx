@@ -8,6 +8,7 @@ import { TabHeader } from '../../components/TabHeader'
 import { InlineLoader, LoadFailure } from '../../components/states'
 import { formatRating } from '../../lib/rating'
 import { paths } from '../../routes'
+import { LegalLinks, PrivacyContact } from '../legal/LegalScreen'
 import { VehicleEditor } from './VehicleEditor'
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -131,6 +132,13 @@ export function ProfileScreen() {
           Sign out
         </Button>
       </div>
+
+      <footer className="mt-8 border-t border-hairline pt-4 text-sm text-ink-70">
+        <LegalLinks />
+        <p className="mt-2">
+          Privacy questions and deletion requests: <PrivacyContact />
+        </p>
+      </footer>
     </>
   )
 }

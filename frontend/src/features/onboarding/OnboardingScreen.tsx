@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useUser } from '@clerk/clerk-react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useCompleteOnboarding, useSession } from '../../api/hooks/users'
 import { isApiError, messageFor } from '../../api/errors'
 import { collectFieldErrors } from '../../api/fieldErrors'
@@ -12,6 +12,7 @@ import { ErrorNotice, FullScreenLoader } from '../../components/states'
 import { Wordmark } from '../../components/Wordmark'
 import { isAdult, todayAsDateInput } from '../../lib/dates'
 import { validateVehicle } from '../../lib/vehicle'
+import { paths } from '../../routes'
 
 const GENDERS: { value: Gender; label: string }[] = [
   { value: 'female', label: 'Female' },
@@ -275,7 +276,19 @@ export function OnboardingScreen() {
         </fieldset>
 
         <CheckboxField
-          label="I accept the RideMatch terms of service and privacy policy."
+          label={
+            <>
+              I accept the RideMatch{' '}
+              <Link className="underline" to={paths.terms} target="_blank" rel="noreferrer">
+                terms of service
+              </Link>{' '}
+              and{' '}
+              <Link className="underline" to={paths.privacy} target="_blank" rel="noreferrer">
+                privacy policy
+              </Link>
+              .
+            </>
+          }
           checked={form.acceptedTerms}
           error={errors.acceptedTerms}
           onChange={(event) => set('acceptedTerms', event.target.checked)}

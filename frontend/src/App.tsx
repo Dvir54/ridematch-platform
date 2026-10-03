@@ -26,6 +26,7 @@ import { PassengerRideScreen } from './features/passenger/PassengerRideScreen'
 import { SearchScreen } from './features/passenger/SearchScreen'
 import { ProfileScreen } from './features/profile/ProfileScreen'
 import { PublicProfileScreen } from './features/profile/PublicProfileScreen'
+import { PrivacyScreen, TermsScreen } from './features/legal/LegalScreen'
 import { RateScreen } from './features/ratings/RateScreen'
 import { WelcomeScreen } from './features/welcome/WelcomeScreen'
 import { homePathFor, paths } from './routes'
@@ -54,6 +55,8 @@ export function App() {
         <Route path={paths.welcome} element={<WelcomeScreen />} />
         <Route path="/sign-in/*" element={<SignInScreen />} />
         <Route path="/sign-up/*" element={<SignUpScreen />} />
+        <Route path={paths.terms} element={<TermsScreen />} />
+        <Route path={paths.privacy} element={<PrivacyScreen />} />
 
         <Route element={<RequireSignedIn />}>
           <Route path={paths.onboarding} element={<OnboardingScreen />} />

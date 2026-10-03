@@ -7,6 +7,9 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { createQueryClient } from './api/queryClient'
 import { AuthProvider } from './auth/AuthProvider'
 import { startMocks } from './mocks/start'
+// Self-hosted, so no visitor IP goes to Google Fonts (plan §11.8).
+import '@fontsource-variable/archivo/wght.css'
+import '@fontsource-variable/archivo/wght-italic.css'
 import './index.css'
 
 const container = document.getElementById('root')

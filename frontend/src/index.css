@@ -7,7 +7,7 @@
    a screen. Nothing else is allowed to be loud.
    ────────────────────────────────────────────────────────────── */
 @theme {
-  --font-sans: "Archivo", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-sans: "Archivo Variable", ui-sans-serif, system-ui, -apple-system, sans-serif;
 
   --color-ink: #15233f;
   --color-ink-70: #4a5670;

@@ -13,6 +13,8 @@ export const paths = {
   onboarding: '/onboarding',
   role: '/role',
   app: '/app',
+  terms: '/terms',
+  privacy: '/privacy',
 
   driverHome: '/app/driver',
   driverRides: '/app/driver/rides',

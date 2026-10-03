@@ -28,6 +28,18 @@ function renderScreen() {
 }
 
 describe('onboarding', () => {
+  it('links the terms and privacy policy from the consent checkbox', async () => {
+    renderScreen()
+    expect(await screen.findByRole('link', { name: 'terms of service' })).toHaveAttribute(
+      'href',
+      '/terms',
+    )
+    expect(screen.getByRole('link', { name: 'privacy policy' })).toHaveAttribute(
+      'href',
+      '/privacy',
+    )
+  })
+
   it('offers the name Clerk already collected', async () => {
     renderScreen()
     expect(await screen.findByLabelText('Name')).toHaveValue('Dvir Levi')

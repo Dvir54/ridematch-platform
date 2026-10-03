@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom'
 import { ButtonLink } from '../../components/Button'
 import { RouteRail } from '../../components/RouteRail'
 import { Wordmark } from '../../components/Wordmark'
+import { LegalLinks } from '../legal/LegalScreen'
 
 const steps = [
   'A driver posts the route and time they are already travelling.',
@@ -63,7 +64,8 @@ export function WelcomeScreen() {
       </main>
 
       <footer className="mx-auto max-w-5xl border-t border-hairline pt-6 text-sm text-ink-70">
-        Everyone on RideMatch is 18 or older and signs up with a verified email address.
+        <p>Everyone on RideMatch is 18 or older and signs up with a verified email address.</p>
+        <LegalLinks className="mt-3" />
       </footer>
     </div>
   )
