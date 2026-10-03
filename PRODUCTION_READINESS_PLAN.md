@@ -1,5 +1,100 @@
 # RideMatch: Production Readiness Plan (rev. 2)
 
+## 0. Approved: start here (status as of 2026-10-03)
+
+Dvir approved this plan. A new session implements it from this section plus §15–§19. The rest of the file is the reasoning behind it.
+
+### Decisions (§18 answered)
+
+- **D1 Host: Render.**
+  - One web service: 1 instance, 1 uvicorn process, never sleeps.
+  - Render Postgres and Render Key Value.
+  - A Static Site for the frontend.
+  - The health check path is `/api/v1/ready`, and the pre-deploy command is `alembic upgrade head`.
+  - Config goes in `render.yaml` with `sync: false` for secrets.
+  - **Don't** create the Render account or deploy.
+- **D2 Sentry: yes,** for the backend and frontend, errors and alerts only.
+  - No tracing, no session replay, `send_default_pii=False`.
+  - Before writing the scrubbing, inspect what can reach Sentry from FastAPI exceptions, React errors, HTTP requests, auth failures and WebSocket errors.
+  - Scrub (`before_send`) the `Authorization` header, cookies, query strings, request bodies, the WS `auth` token, emails, and the `svix-*` headers.
+  - Test that a captured event contains none of these.
+  - Add Sentry to the data inventory (§12) as a processor.
+- **D3 Phone: stop collecting it.**
+  - Remove it from onboarding, Profile, the admin user view, the backend schemas and the service.
+  - Add Alembic migration `0002` to drop `users.phone`. `schema.sql` already drops it.
+  - Update the tests and MSW mocks.
+  - Remove `frontend/src/lib/phone.ts` if nothing uses it any more.
+
+### Additional requirements from Dvir
+
+- **Date of birth:** keep the 18+ check as it is. Write down in §12 whether the stored DOB could later shrink to an "18+ verified" flag, but **don't change the schema for it**.
+- **Legal:** don't write the terms or privacy text. Build the `/terms` and `/privacy` routes and links with clearly marked placeholders. Keep §12's data inventory accurate, with Sentry and the phone removal reflected.
+- **Limits:** a 64 KiB body limit (413) and a 64 KiB WebSocket frame cap. **No** per-user 429 rate limiting yet.
+- **SMTP:** 10 s timeout, commit first, then dispatch, with failures logged without the address. No job or outbox infrastructure.
+- **Keep the Postgres advisory lock** around job passes.
+- No unrelated refactors.
+
+### Done so far
+
+- `8889f3c`: this plan.
+- `3d9709f` **contract 0.5.0 (D22)**: `openapi.yaml`, `CONTRACT.md` (§2, §4, §5, §6, D22) and `schema.sql` are updated, and `frontend/src/api/schema.d.ts` is regenerated. **The contract is the spec for steps 2–9.** The code doesn't implement it yet, so **`main` is red** (frontend typecheck, tests) until the work below lands. Don't push before then.
+
+Details §19 and D22 leave open, decided now:
+
+| Area | Decision |
+|---|---|
+| WebSocket | `{"event":"auth","token":…}` first, 10 s timeout (`WS_AUTH_TIMEOUT_SECONDS`), the server replies `{"event":"ready"}`. A bad `Origin` closes with 4403. A `?token=` query parameter is ignored. |
+| `/health` | `{"status":"ok"}`, no I/O. |
+| `/ready` | 200 `{status:"ready", db:true, redis}`, or 503 `NOT_READY`. |
+| Anonymisation | `name="Deleted user"`, `email=deleted-<id>@deleted.invalid`, `clerk_user_id=deleted_<id>`, `gender`/`vehicle`/`preferences` null, `date_of_birth=1900-01-01`, `is_active=false`. |
+| CLI | `python -m app.admin_cli grant\|revoke\|anonymise <email>` |
+
+### Work order
+
+The contract step (§19 step 1) is done. Do §19 steps 2–9, plus the D2 and D3 work above. **Dvir asked for all phases in one run, not one chunk per conversation**, which overrides CLAUDE.md's "stop after each chunk".
+
+After each phase:
+1. run the relevant tests;
+2. run the frontend build;
+3. run the backend checks;
+4. run audits where relevant;
+5. check nothing regressed;
+6. commit.
+
+**Before finishing:**
+- [ ] full pytest suite (in the background)
+- [ ] frontend production build
+- [ ] `alembic check`
+- [ ] `alembic upgrade head` on a clean database
+- [ ] production config validation
+- [ ] WebSocket auth flow
+- [ ] `/health` and `/ready`
+- [ ] admin CLI
+- [ ] email after commit and the timeout
+- [ ] Sentry receives no sensitive data
+- [ ] `pip-audit` and `npm audit`
+- [ ] a final readiness pass
+- [ ] update this file's status
+
+**Then report:**
+1. what changed;
+2. which checks passed;
+3. remaining blockers;
+4. what Dvir must configure manually;
+5. the exact Render deployment steps.
+
+Then stop.
+
+Repo-side deploy artifacts to create:
+- `backend/Dockerfile` and `.dockerignore`
+- `render.yaml`
+- the production section of `.env.example`
+- `scripts/check-all.sh`
+- a local production-like validation script (build the image, run it against the compose Postgres and Redis with `APP_ENV=production`-style settings, hit `/health` and `/ready`)
+- the migration and release runbook in `backend/README.md`
+
+Edit `CLAUDE.md` wording only where §5 says to (Alembic is the DB source of truth).
+
 Audit: 2026-10-03 · `main` @ `c4d871c` · contract 0.4.9 · **plan only; no application code has been changed.**
 
 Rev. 2 adds a precise analysis of every blocker and deployment risk, a hosting comparison, a data inventory and a concrete deployment architecture. It ends with the four lists asked for in §14–§17.
