@@ -43,8 +43,8 @@ can't double-send reminders.
 
 | Check | Path | Use |
 |---|---|---|
-| Liveness | `GET /api/v1/health` → `{"status":"ok"}`, no I/O | Docker `HEALTHCHECK` |
-| Readiness | `GET /api/v1/ready` → 200 `{status, db: true, redis}` or 503 `NOT_READY` | host deploy gate, uptime monitor |
+| Liveness | `GET /api/v1/health` → `{"status":"ok"}`, no I/O | Docker `HEALTHCHECK`, Render health check, uptime monitor |
+| Readiness | `GET /api/v1/ready` → 200 `{status, db: true, redis}` or 503 `NOT_READY` | manual check after a deploy |
 
 ## Migrations and releases
 
@@ -79,8 +79,11 @@ rewrite, CSP/HSTS/`nosniff`/Referrer-Policy/`frame-ancestors 'none'`), all in Fr
 **Neon**'s free tier (Render's free Postgres is deleted after 30 days). Every production variable is
 listed in `.env.example` under "Production". The only cost is the domain.
 
-Free-tier limits: the API sleeps after ~15 min idle and the first request wakes it (~1 min); the
-jobs loop (reminders, auto-complete) pauses while it sleeps. There is no pre-deploy step, so
+Free-tier limits: the API sleeps after ~15 min idle and the first request wakes it (~1 min), so an
+uptime monitor on `/api/v1/health` keeps it awake. Neon's free compute (100 CU-hours/month) only
+lasts if the database can scale to zero, so nothing polls it: Render's health check is `/health`
+(no DB), and `JOBS_ENABLED=false` turns off the jobs loop (reminders, auto-complete, stale-cancel;
+set it to `true` on `ridematch-api` to bring them back, which catches up on anything overdue). There is no pre-deploy step, so
 `alembic upgrade head` runs in the start command (`dockerCommand`), and no Shell, so admin tasks
 run from your machine against Neon. To leave the free tier: `plan: starter`, move the migration to
 `preDeployCommand`.
@@ -105,7 +108,7 @@ run from your machine against Neon. To leave the free tier: `plan: starter`, mov
    (enter a placeholder `whsec_` value for now if the endpoint doesn't exist yet), the SMTP
    settings, `EMAIL_FROM`, the Sentry DSNs, `VITE_CLERK_PUBLISHABLE_KEY`, `VITE_MAPBOX_TOKEN`.
 2. Apply. Render creates Key Value, builds the image, and the start command runs
-   `alembic upgrade head` against Neon, then starts uvicorn and waits for `/api/v1/ready` to return 200. If the
+   `alembic upgrade head` against Neon, then starts uvicorn and waits for `/api/v1/health` to return 200. If the
    API refuses to start, its log lists every invalid production setting at once.
 3. Custom domains: `api.<domain>` on `ridematch-api`, `app.<domain>` on `ridematch-web`. Add the
    DNS records Render shows; it issues the TLS certificates.
@@ -115,7 +118,8 @@ run from your machine against Neon. To leave the free tier: `plan: starter`, mov
 5. Sign up on `https://app.<domain>`, finish onboarding, then make yourself admin from this folder
    (Git Bash; the Neon URL from step 6):
    `DATABASE_URL='<neon url>' uv run python -m app.admin_cli grant <your email>`.
-6. An uptime monitor (e.g. UptimeRobot) on `https://api.<domain>/api/v1/ready`.
+6. An uptime monitor (e.g. UptimeRobot) on `https://api.<domain>/api/v1/health`, every 5 min (not
+   `/ready`: its DB query would keep Neon awake).
 
 **Check the deploy**
 - `curl https://api.<domain>/api/v1/health` → `{"status":"ok"}`; `/ready` → `"status":"ready"`;

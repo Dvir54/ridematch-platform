@@ -10,8 +10,8 @@
 # Blueprint is created, and they never live in git.
 
 services:
-  # ── API: one instance, one uvicorn process (§4). The free plan sleeps after ~15 min idle:
-  #    the first request wakes it (~1 min) and the jobs loop pauses meanwhile. `starter` never sleeps. ──
+  # ── API: one instance, one uvicorn process (§4). The free plan sleeps after ~15 min idle and the
+  #    first request wakes it (~1 min); an uptime monitor on /api/v1/health keeps it awake. ──
   - type: web
     name: ridematch-api
     runtime: docker
@@ -24,7 +24,9 @@ services:
     autoDeployTrigger: commit
     buildFilter:
       paths: ["backend/**"]
-    healthCheckPath: /api/v1/ready
+    # /health, not /ready: Render probes every few seconds, and /ready's DB query would keep Neon's
+    # free compute from ever scaling to zero (100 CU-hours/month).
+    healthCheckPath: /api/v1/health
     # The free plan has no pre-deploy step, so the release runs at start: a failed migration exits,
     # /ready never passes, and the deploy aborts with the old version still serving.
     # (On `starter`: preDeployCommand: alembic upgrade head, and drop the alembic part here.)
@@ -80,8 +82,8 @@ services:
         sync: false
       - key: SMTP_PASSWORD
         sync: false
-      - key: JOBS_ENABLED
-        value: "true"
+      - key: JOBS_ENABLED           # off: the per-minute DB pass would keep Neon awake 24/7.
+        value: "false"              # "true" turns reminders, auto-complete and stale-cancel back on
       - key: SENTRY_DSN             # backend project DSN; leave empty to turn Sentry off
         sync: false
       # ADMIN_EMAIL stays unset in production: grant admins with `python -m app.admin_cli grant`.
