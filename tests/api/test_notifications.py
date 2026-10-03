@@ -13,7 +13,9 @@ from support.assertions import expect_error, expect_no_content, expect_status
 
 
 async def _ids(client, as_user, **params):
-    body = expect_status(await client.get("/notifications", params=params, headers=as_user.headers), 200)
+    body = expect_status(
+        await client.get("/notifications", params=params, headers=as_user.headers), 200
+    )
     return [n["id"] for n in body]
 
 
@@ -60,7 +62,9 @@ class TestList:
 
     async def test_a_deactivated_user_is_forbidden(self, client, users, user) -> None:
         await users.deactivate(user)
-        expect_error(await client.get("/notifications", headers=user.headers), 403, "ACCOUNT_DEACTIVATED")
+        expect_error(
+            await client.get("/notifications", headers=user.headers), 403, "ACCOUNT_DEACTIVATED"
+        )
 
 
 class TestUnreadCount:

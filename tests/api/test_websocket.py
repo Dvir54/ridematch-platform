@@ -58,30 +58,38 @@ def _onboard(ws_client, users, **overrides) -> tuple[dict, str]:
 
 class TestAuth:
     def test_an_invalid_token_closes_4401(self, ws_client) -> None:
-        with ws_client.websocket_connect(_ws_url("not-a-real-token")) as ws:
-            with pytest.raises(WebSocketDisconnect) as exc_info:
-                ws.receive_text()
+        with (
+            ws_client.websocket_connect(_ws_url("not-a-real-token")) as ws,
+            pytest.raises(WebSocketDisconnect) as exc_info,
+        ):
+            ws.receive_text()
         assert exc_info.value.code == 4401
 
     async def test_an_expired_token_closes_4401(self, ws_client, user) -> None:
-        with ws_client.websocket_connect(_ws_url(user.token(expires_in=-3600))) as ws:
-            with pytest.raises(WebSocketDisconnect) as exc_info:
-                ws.receive_text()
+        with (
+            ws_client.websocket_connect(_ws_url(user.token(expires_in=-3600))) as ws,
+            pytest.raises(WebSocketDisconnect) as exc_info,
+        ):
+            ws.receive_text()
         assert exc_info.value.code == 4401
 
     async def test_a_valid_token_with_no_profile_closes_4401(self, ws_client, users) -> None:
         sub, email = users.new_identity()
         token = users.signer.sign(sub=sub, email=email)
-        with ws_client.websocket_connect(_ws_url(token)) as ws:
-            with pytest.raises(WebSocketDisconnect) as exc_info:
-                ws.receive_text()
+        with (
+            ws_client.websocket_connect(_ws_url(token)) as ws,
+            pytest.raises(WebSocketDisconnect) as exc_info,
+        ):
+            ws.receive_text()
         assert exc_info.value.code == 4401
 
     async def test_a_deactivated_account_closes_4403(self, ws_client, users, user) -> None:
         await users.deactivate(user)
-        with ws_client.websocket_connect(_ws_url(user.token())) as ws:
-            with pytest.raises(WebSocketDisconnect) as exc_info:
-                ws.receive_text()
+        with (
+            ws_client.websocket_connect(_ws_url(user.token())) as ws,
+            pytest.raises(WebSocketDisconnect) as exc_info,
+        ):
+            ws.receive_text()
         assert exc_info.value.code == 4403
 
     async def test_a_valid_token_connects_and_stays_open(self, ws_client, user) -> None:
@@ -99,7 +107,7 @@ class TestPingPong:
 
 class TestPush:
     def test_push_payload_equals_the_rest_object(self, ws_client, users) -> None:
-        driver, driver_token = _onboard(ws_client, users, vehicle=dict(DEFAULT_VEHICLE))
+        _driver, driver_token = _onboard(ws_client, users, vehicle=dict(DEFAULT_VEHICLE))
 
         with ws_client.websocket_connect(_ws_url(driver_token)) as ws:
             ride = ws_client.post(

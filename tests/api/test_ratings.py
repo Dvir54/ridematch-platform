@@ -38,7 +38,11 @@ class TestCreate:
         offer = await completed_ride(rides, requests, driver, passenger)
 
         body = await ratings.create(
-            driver, ride_id=offer.id, to_user_id=passenger.id, score=5, tags=["on_time", "clean_car"]
+            driver,
+            ride_id=offer.id,
+            to_user_id=passenger.id,
+            score=5,
+            tags=["on_time", "clean_car"],
         )
 
         assert body["ride_id"] == offer.id
@@ -105,7 +109,9 @@ class TestCreate:
     ) -> None:
         offer = await completed_ride(rides, requests, driver, passenger)
         expect_error(
-            await ratings.create_response(driver, ride_id=offer.id, to_user_id=9999999), 404, "NOT_FOUND"
+            await ratings.create_response(driver, ride_id=offer.id, to_user_id=9999999),
+            404,
+            "NOT_FOUND",
         )
 
 
@@ -114,7 +120,9 @@ class TestCreateRefusals:
     async def test_only_a_completed_ride_can_be_rated(
         self, rides, requests, users, status: str, ratings
     ) -> None:
-        offer = await ride_in_status(status, rides=rides, requests=requests, users=users, capacity=1)
+        offer = await ride_in_status(
+            status, rides=rides, requests=requests, users=users, capacity=1
+        )
         passenger = await users.create()
         expect_error(
             await ratings.create_response(offer.driver, ride_id=offer.id, to_user_id=passenger.id),
@@ -196,7 +204,9 @@ class TestCreateValidation:
     ) -> None:
         offer = await completed_ride(rides, requests, driver, passenger)
         expect_validation_error(
-            await ratings.create_response(driver, ride_id=offer.id, to_user_id=passenger.id, score=score),
+            await ratings.create_response(
+                driver, ride_id=offer.id, to_user_id=passenger.id, score=score
+            ),
             field="score",
         )
 
@@ -261,16 +271,14 @@ class TestAverageMath:
     ) -> None:
         scores = [5, 3, 4]
         expected_avg: float | None = None
-        expected_count = 0
         for index, score in enumerate(scores):
             passenger = await users.create()
             offer = await completed_ride(rides, requests, driver, passenger)
             await ratings.create(passenger, ride_id=offer.id, to_user_id=driver.id, score=score)
-            expected_avg = average_after(expected_avg, expected_count, score)
-            expected_count += 1
+            expected_avg = average_after(expected_avg, index, score)
 
             profile = expect_status(await client.get("/users/me", headers=driver.headers), 200)
-            assert profile["driver_rating_count"] == expected_count
+            assert profile["driver_rating_count"] == index + 1
             assert round(profile["driver_rating"], 1) == round(expected_avg, 1), (
                 f"after rating #{index + 1}"
             )
@@ -303,18 +311,17 @@ class TestPending:
         offer = await completed_ride(rides, requests, driver, passenger)
 
         driver_owes = await ratings.pending(driver)
-        assert [(item["ride"]["id"], item["to_user"]["id"], item["role_rated"]) for item in driver_owes] == [
-            (offer.id, passenger.id, "passenger")
-        ]
+        assert [
+            (item["ride"]["id"], item["to_user"]["id"], item["role_rated"]) for item in driver_owes
+        ] == [(offer.id, passenger.id, "passenger")]
 
         passenger_owes = await ratings.pending(passenger)
         assert [
-            (item["ride"]["id"], item["to_user"]["id"], item["role_rated"]) for item in passenger_owes
+            (item["ride"]["id"], item["to_user"]["id"], item["role_rated"])
+            for item in passenger_owes
         ] == [(offer.id, driver.id, "driver")]
 
-    async def test_disappears_once_rated(
-        self, rides, requests, driver, passenger, ratings
-    ) -> None:
+    async def test_disappears_once_rated(self, rides, requests, driver, passenger, ratings) -> None:
         offer = await completed_ride(rides, requests, driver, passenger)
         await ratings.create(driver, ride_id=offer.id, to_user_id=passenger.id)
         assert await ratings.pending(driver) == []
@@ -347,9 +354,7 @@ class TestListUserRatings:
         self, rides, requests, driver, passenger, ratings
     ) -> None:
         offer = await completed_ride(rides, requests, driver, passenger)
-        created = await ratings.create(
-            driver, ride_id=offer.id, to_user_id=passenger.id, score=5
-        )
+        created = await ratings.create(driver, ride_id=offer.id, to_user_id=passenger.id, score=5)
 
         body = expect_status(await ratings.for_user(passenger.id, passenger), 200)
         assert [item["id"] for item in body] == [created["id"]]
@@ -362,7 +367,9 @@ class TestListUserRatings:
         await rides.complete(offer)
         await ratings.create(passenger, ride_id=offer.id, to_user_id=driver.id)
 
-        other_offer = await rides.offer(await users.create_driver(), capacity=2, departure_in=STARTABLE_HOURS)
+        other_offer = await rides.offer(
+            await users.create_driver(), capacity=2, departure_in=STARTABLE_HOURS
+        )
         await requests.approved(other_offer, driver)  # driver also rides as a passenger
         await rides.start(other_offer)
         await rides.complete(other_offer)
@@ -381,9 +388,7 @@ class TestListUserRatings:
     async def test_newest_first(self, rides, requests, driver, users, ratings) -> None:
         first_passenger = await users.create()
         first = await completed_ride(rides, requests, driver, first_passenger)
-        first_rating = await ratings.create(
-            first_passenger, ride_id=first.id, to_user_id=driver.id
-        )
+        first_rating = await ratings.create(first_passenger, ride_id=first.id, to_user_id=driver.id)
 
         second_passenger = await users.create()
         second = await completed_ride(rides, requests, driver, second_passenger)

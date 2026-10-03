@@ -231,9 +231,8 @@ def ws_client(backend_app):
     it. `backend_app` is only depended on so a missing backend still skips
     instead of raising ImportError here.
     """
-    from starlette.testclient import TestClient
-
     from app.main import create_app
+    from starlette.testclient import TestClient
 
     # No API_PREFIX in base_url: TestClient.websocket_connect builds the ASGI
     # scope from the URL itself and does not merge a base_url sub-path into it

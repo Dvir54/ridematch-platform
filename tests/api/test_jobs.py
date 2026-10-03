@@ -128,7 +128,9 @@ class TestStaleCancel:
         assert "request_rejected" in await notification_types(db, pending_passenger.id)
         assert "request_rejected" not in await notification_types(db, approved_passenger.id)
 
-    async def test_the_auto_rejection_is_emailed(self, rides, requests, users, outbox, backend_app) -> None:
+    async def test_the_auto_rejection_is_emailed(
+        self, rides, requests, users, outbox, backend_app
+    ) -> None:
         offer = await rides.offer(departure_in=1.0)
         passenger = await users.create()
         await requests.create(offer, passenger)

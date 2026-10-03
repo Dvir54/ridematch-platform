@@ -12,9 +12,9 @@ import pytest
 
 from support import clock
 from support.assertions import expect_status
-from support.env import MATCH_MIN_SCORE, SEARCH_RADIUS_KM
+from support.env import SEARCH_RADIUS_KM
 from support.geo import north
-from support.search import PASSENGER_END, PASSENGER_START, DEFAULT_SEARCH_DEPARTURE_HOURS
+from support.search import DEFAULT_SEARCH_DEPARTURE_HOURS, PASSENGER_END, PASSENGER_START
 
 R = SEARCH_RADIUS_KM
 DEFAULT_PRICE = "20.00"
@@ -125,9 +125,7 @@ def result_for(results, ride_id: int):
 
 # ── exact component scores ──────────────────────────────────────────────
 class TestScoreComponents:
-    async def test_baseline_all_components_at_their_default_max(
-        self, rides, users, search
-    ) -> None:
+    async def test_baseline_all_components_at_their_default_max(self, rides, users, search) -> None:
         """p=0, d=0, Δ=0, no budget, no rating on file, no restrictive prefs."""
         passenger = await users.create()
         offer = await make_offer(rides)
@@ -297,7 +295,9 @@ class TestExclusions:
         results = expect_status(await search.response(driver), 200)
         assert result_for(results, offer.id) is None
 
-    async def test_excludes_ride_with_a_pending_request(self, rides, requests, users, search) -> None:
+    async def test_excludes_ride_with_a_pending_request(
+        self, rides, requests, users, search
+    ) -> None:
         passenger = await users.create()
         offer = await make_offer(rides)
         await requests.create(offer, passenger)
@@ -322,14 +322,18 @@ class TestExclusions:
         results = expect_status(await search.response(passenger), 200)
         assert result_for(results, offer.id) is None
 
-    async def test_excludes_gender_only_ride_when_gender_differs(self, rides, users, search) -> None:
+    async def test_excludes_gender_only_ride_when_gender_differs(
+        self, rides, users, search
+    ) -> None:
         driver = await users.create_driver(gender="male")
         passenger = await users.create(gender="female")
         offer = await make_offer(rides, driver, gender_only=True)
         results = expect_status(await search.response(passenger), 200)
         assert result_for(results, offer.id) is None
 
-    async def test_includes_gender_only_ride_when_gender_matches(self, rides, users, search) -> None:
+    async def test_includes_gender_only_ride_when_gender_matches(
+        self, rides, users, search
+    ) -> None:
         driver = await users.create_driver(gender="male")
         passenger = await users.create(gender="male")
         offer = await make_offer(rides, driver, gender_only=True)

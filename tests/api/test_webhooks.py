@@ -23,15 +23,11 @@ class TestSignature:
     async def test_valid_signature_is_accepted(self, client, user) -> None:
         body = event_body("user.updated", user_updated_data(user.clerk_user_id, email=user.email))
         headers = sign(svix_id=unique_svix_id(), body=body)
-        expect_no_content(
-            await client.post(WEBHOOK, content=body, headers=headers)
-        )
+        expect_no_content(await client.post(WEBHOOK, content=body, headers=headers))
 
     async def test_missing_headers_is_a_signature_error(self, client, user) -> None:
         body = event_body("user.updated", user_updated_data(user.clerk_user_id, email=user.email))
-        expect_error(
-            await client.post(WEBHOOK, content=body), 400, "INVALID_WEBHOOK_SIGNATURE"
-        )
+        expect_error(await client.post(WEBHOOK, content=body), 400, "INVALID_WEBHOOK_SIGNATURE")
 
     async def test_wrong_signature_is_rejected(self, client, user) -> None:
         body = event_body("user.updated", user_updated_data(user.clerk_user_id, email=user.email))
@@ -41,7 +37,9 @@ class TestSignature:
             "svix-signature": "v1,not-the-right-signature",
         }
         expect_error(
-            await client.post(WEBHOOK, content=body, headers=headers), 400, "INVALID_WEBHOOK_SIGNATURE"
+            await client.post(WEBHOOK, content=body, headers=headers),
+            400,
+            "INVALID_WEBHOOK_SIGNATURE",
         )
 
     async def test_a_tampered_body_is_rejected(self, client, user) -> None:
@@ -68,7 +66,8 @@ class TestSignature:
 class TestUserUpdated:
     async def test_syncs_the_email(self, client, admin, user) -> None:
         body = event_body(
-            "user.updated", user_updated_data(user.clerk_user_id, email="new-address@ridematch.test")
+            "user.updated",
+            user_updated_data(user.clerk_user_id, email="new-address@ridematch.test"),
         )
         headers = sign(svix_id=unique_svix_id(), body=body)
         expect_no_content(await client.post(WEBHOOK, content=body, headers=headers))
@@ -97,9 +96,9 @@ class TestUserDeleted:
     async def test_closes_open_sockets(self, ws_client, users) -> None:
         sub, email = users.new_identity()
         token = users.signer.sign(sub=sub, email=email)
-        onboarded = ws_client.post(
+        ws_client.post(
             f"{API}/users/me/onboarding", json=onboarding_payload(), headers=auth_header(token)
-        ).json()
+        )
 
         with ws_client.websocket_connect(f"{API}/ws?token={token}") as ws:
             body = event_body("user.deleted", user_deleted_data(sub))
@@ -108,7 +107,7 @@ class TestUserDeleted:
             assert response.status_code == 204, response.text
             try:
                 ws.receive_text()
-                assert False, "expected the socket to close"
+                raise AssertionError("expected the socket to close")
             except WebSocketDisconnect as exc:
                 assert exc.code == 4403
 
@@ -117,7 +116,8 @@ class TestIdempotency:
     async def test_a_replayed_svix_id_is_a_no_op(self, client, admin, user) -> None:
         svix_id = unique_svix_id()
         first_body = event_body(
-            "user.updated", user_updated_data(user.clerk_user_id, email="first-address@ridematch.test")
+            "user.updated",
+            user_updated_data(user.clerk_user_id, email="first-address@ridematch.test"),
         )
         headers = sign(svix_id=svix_id, body=first_body)
         expect_no_content(await client.post(WEBHOOK, content=first_body, headers=headers))
@@ -137,7 +137,8 @@ class TestIdempotency:
 
     async def test_a_new_svix_id_is_applied_normally(self, client, admin, user) -> None:
         first_body = event_body(
-            "user.updated", user_updated_data(user.clerk_user_id, email="first-address@ridematch.test")
+            "user.updated",
+            user_updated_data(user.clerk_user_id, email="first-address@ridematch.test"),
         )
         expect_no_content(
             await client.post(
@@ -145,11 +146,14 @@ class TestIdempotency:
             )
         )
         second_body = event_body(
-            "user.updated", user_updated_data(user.clerk_user_id, email="second-address@ridematch.test")
+            "user.updated",
+            user_updated_data(user.clerk_user_id, email="second-address@ridematch.test"),
         )
         expect_no_content(
             await client.post(
-                WEBHOOK, content=second_body, headers=sign(svix_id=unique_svix_id(), body=second_body)
+                WEBHOOK,
+                content=second_body,
+                headers=sign(svix_id=unique_svix_id(), body=second_body),
             )
         )
 

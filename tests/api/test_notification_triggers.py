@@ -46,7 +46,9 @@ class TestRequestApprovedEmailsThePassenger:
             "CONTRACT.md §7: the driver has no email on this row"
         )
 
-    async def test_no_email_when_the_passenger_opted_out(self, offer, requests, users, outbox) -> None:
+    async def test_no_email_when_the_passenger_opted_out(
+        self, offer, requests, users, outbox
+    ) -> None:
         passenger = await users.create(preferences={"notifications": {"email": False}})
         await requests.approved(offer, passenger)
         assert not [m for m in outbox if m.to == passenger.email]

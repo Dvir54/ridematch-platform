@@ -220,7 +220,9 @@ class TestForceCancel:
         assert "ride_cancelled" in await notification_types(db, passenger.id)
         assert "ride_cancelled" in await notification_types(db, driver.id)
 
-    async def test_seats_return_to_the_ride(self, client, admin, rides, requests, driver, passenger) -> None:
+    async def test_seats_return_to_the_ride(
+        self, client, admin, rides, requests, driver, passenger
+    ) -> None:
         offer = await rides.offer(driver, capacity=1, departure_in=STARTABLE_HOURS)
         await requests.approved(offer, passenger)
         await rides.refresh(offer)
@@ -289,14 +291,10 @@ class TestListRides:
         assert other.id not in ids
 
     async def test_filter_by_status(self, client, admin, rides, requests, users) -> None:
-        cancelled = await ride_in_status(
-            "cancelled", rides=rides, requests=requests, users=users
-        )
+        cancelled = await ride_in_status("cancelled", rides=rides, requests=requests, users=users)
         upcoming = await rides.offer()
         body = expect_status(
-            await client.get(
-                "/admin/rides", params={"status": "cancelled"}, headers=admin.headers
-            ),
+            await client.get("/admin/rides", params={"status": "cancelled"}, headers=admin.headers),
             200,
         )
         ids = [r["id"] for r in body]
@@ -306,9 +304,7 @@ class TestListRides:
 
 class TestAnalytics:
     async def test_requires_from_and_to(self, client, admin) -> None:
-        expect_validation_error(
-            await client.get("/admin/analytics", headers=admin.headers)
-        )
+        expect_validation_error(await client.get("/admin/analytics", headers=admin.headers))
 
     async def test_counts_rides_and_requests_in_window(
         self, client, admin, rides, requests, driver, passenger
