@@ -128,6 +128,7 @@ pending ──ride started / stale──▶ rejected
 | HTTP | code | When |
 |---|---|---|
 | 400 | `INVALID_WEBHOOK_SIGNATURE` | Clerk webhook with a missing or bad Svix signature |
+| 400 | `BAD_REQUEST` | a request body that isn't parseable JSON (a well-formed body that fails validation is a 422) |
 | 401 | `UNAUTHENTICATED` | missing, invalid or expired Clerk session token |
 | 403 | `ONBOARDING_REQUIRED` | valid Clerk user, but no RideMatch profile yet |
 | 403 | `ACCOUNT_DEACTIVATED` | `is_active=false` |
