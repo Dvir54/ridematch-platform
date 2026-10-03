@@ -31,6 +31,7 @@ from app.modules.rides.router import router as rides_router
 from app.modules.search.router import router as search_router
 from app.modules.users.router import router as users_router
 from app.modules.webhooks.router import router as webhooks_router
+from app.monitoring import init_sentry
 from app.redis_client import create_redis
 from app.ws import WsRegistry
 from app.ws import router as ws_router
@@ -54,6 +55,7 @@ ROUTERS = (
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level, json_logs=settings.app_env == "production")
+    init_sentry(settings)
     logger.info(
         "config env=%s issuer=%s parties=%s db_host=%s",
         settings.app_env,

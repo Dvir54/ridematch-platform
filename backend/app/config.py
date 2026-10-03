@@ -78,6 +78,9 @@ class Settings(BaseSettings):
     reminder_minutes_before: int = 60
     auto_complete_after_hours: int = 12
 
+    # ── Error monitoring (empty = off) ──
+    sentry_dsn: str = ""
+
     # ── Admin ──
     admin_email: str = ""
 
