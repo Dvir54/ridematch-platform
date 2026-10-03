@@ -87,7 +87,6 @@ export function ProfileScreen() {
             label="As a passenger"
             value={formatRating(user.passenger_rating, user.passenger_rating_count)}
           />
-          <Row label="Phone" value={user.phone ?? 'Not added'} />
         </dl>
       </section>
 

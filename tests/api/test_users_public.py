@@ -36,7 +36,7 @@ class TestPublicProfile:
         assert body["created_at"], 'created_at drives the "Member since" line'
 
     async def test_hides_private_fields(self, client, users) -> None:
-        subject = await users.create(phone="+972 50-123-4567", gender="female")
+        subject = await users.create(gender="female")
         viewer = await users.create()
 
         body = expect_status(await client.get(f"/users/{subject.id}", headers=viewer.headers), 200)
@@ -44,7 +44,7 @@ class TestPublicProfile:
 
     async def test_hides_private_fields_from_the_subject_too(self, client, users) -> None:
         """The endpoint has one shape; /users/me is where you see your own data."""
-        subject = await users.create(phone="+972 50-123-4567")
+        subject = await users.create()
         body = expect_status(await client.get(f"/users/{subject.id}", headers=subject.headers), 200)
         assert_absent(body, *PRIVATE_FIELDS)
 

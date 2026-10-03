@@ -51,7 +51,6 @@ async function pickAddress(page: Page, label: string, typed: string, address: st
 async function onboard(page: Page, user: TestUser, withCar: boolean) {
   await expect(page.getByRole('heading', { name: 'Set up your profile' })).toBeVisible()
   await page.getByLabel('Name').fill(user.name)
-  await page.getByLabel('Phone').fill('050-123-4567')
   await page.getByLabel('Date of birth').fill('1990-01-15')
   await page.getByLabel('Gender').selectOption({ label: 'Prefer not to say' })
   if (withCar) {

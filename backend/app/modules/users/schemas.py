@@ -8,10 +8,6 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
 
 from app.schemas import ApiModel, NotNull, UtcDatetime
 
-#: openapi.yaml #/components/schemas/Phone — digits, spaces, hyphens, parentheses, dots and
-#: an optional leading `+` (CONTRACT.md D17, widened by D18).
-PHONE_PATTERN = r"^\+?[0-9 ().\-]{7,20}$"
-
 
 class Gender(StrEnum):
     male = "male"
@@ -27,8 +23,6 @@ class Mode(StrEnum):
 
 Theme = Literal["light", "dark", "system"]
 Name = Annotated[str, Field(min_length=1, max_length=100)]
-#: One format for every write path — openapi.yaml #/components/schemas/Phone (CONTRACT.md D17).
-Phone = Annotated[str, Field(max_length=20, pattern=PHONE_PATTERN)]
 
 
 class NotificationPrefs(BaseModel):
@@ -102,7 +96,6 @@ def _vehicle_public(value: Any) -> Any:
 
 class OnboardingRequest(BaseModel):
     name: Name
-    phone: Phone | None = None
     date_of_birth: date
     gender: Gender | None = None
     preferences: NotNull[UserPreferencesPatch] = None
@@ -113,10 +106,9 @@ class OnboardingRequest(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    """`phone`, `gender` and `vehicle` are the nullable ones in openapi.yaml; the rest are not."""
+    """`gender` and `vehicle` are the nullable ones in openapi.yaml; the rest are not."""
 
     name: NotNull[Name] = None
-    phone: Phone | None = None
     gender: Gender | None = None
     preferences: NotNull[UserPreferencesPatch] = None
     #: Full replace; null removes it (409 VEHICLE_REQUIRED while the user has open rides).
@@ -131,7 +123,6 @@ class UserMe(ApiModel):
     # on the way out could only turn good data into a 500.
     email: str
     name: str
-    phone: str | None = None
     date_of_birth: date | None = None
     gender: Gender | None = None
     is_admin: bool
@@ -152,7 +143,7 @@ class UserMe(ApiModel):
 
 
 class UserPublic(ApiModel):
-    """What other users may see. No email/phone/DOB."""
+    """What other users may see. No email/DOB."""
 
     id: int
     name: str

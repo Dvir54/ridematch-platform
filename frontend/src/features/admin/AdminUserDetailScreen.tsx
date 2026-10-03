@@ -82,10 +82,6 @@ export function AdminUserDetailScreen() {
             <dd className="text-right font-medium">{user.is_admin ? 'Admin' : 'Member'}</dd>
           </div>
           <div className="flex items-baseline justify-between gap-4 border-b border-hairline py-3">
-            <dt className="text-sm text-ink-70">Phone</dt>
-            <dd className="text-right font-medium">{user.phone ?? 'Not added'}</dd>
-          </div>
-          <div className="flex items-baseline justify-between gap-4 border-b border-hairline py-3">
             <dt className="text-sm text-ink-70">As a driver</dt>
             <dd className="tnum text-right font-medium">
               {formatRating(user.driver_rating, user.driver_rating_count)}

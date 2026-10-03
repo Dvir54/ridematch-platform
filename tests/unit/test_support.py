@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import re
 from datetime import date
 
 import jwt
 import pytest
 
 from support import clock, env
-from support.factories import INVALID_PHONES, OMIT, VALID_PHONES, onboarding_payload
+from support.factories import OMIT, onboarding_payload
 from support.keys import KeyPair, TokenSigner, auth_header
 
 
@@ -119,49 +118,3 @@ class TestEnvGuard:
 
     def test_asyncpg_dsn_drops_the_driver(self) -> None:
         assert env.asyncpg_dsn("postgresql+asyncpg://u:p@h:1/d") == "postgresql://u:p@h:1/d"
-
-
-@pytest.fixture(scope="module")
-def phone_pattern() -> re.Pattern:
-    phone = _spec()["components"]["schemas"]["Phone"]
-    assert phone["maxLength"] == 20
-    return re.compile(phone["pattern"])
-
-
-def _spec() -> dict:
-    import yaml
-
-    return yaml.safe_load(env.OPENAPI_PATH.read_text(encoding="utf-8"))
-
-
-class TestPhoneSamples:
-    """Keep VALID_PHONES / INVALID_PHONES honest against openapi.yaml itself.
-
-    The sample lists drive both the onboarding and the PATCH phone tests. If a
-    contract bump changes the pattern and nobody updates the lists, this fails
-    straight away - without needing the backend or a database.
-    """
-
-    @pytest.mark.parametrize("phone", VALID_PHONES)
-    def test_valid_samples_match_the_contract(self, phone_pattern: re.Pattern, phone: str) -> None:
-        assert phone_pattern.fullmatch(phone), (
-            f"{phone!r} is in VALID_PHONES but the pattern rejects it"
-        )
-        assert len(phone) <= 20
-
-    @pytest.mark.parametrize("phone", list(INVALID_PHONES.values()), ids=list(INVALID_PHONES))
-    def test_invalid_samples_are_rejected_by_the_contract(
-        self, phone_pattern: re.Pattern, phone: str
-    ) -> None:
-        assert not phone_pattern.fullmatch(phone) or len(phone) > 20, (
-            f"{phone!r} is in INVALID_PHONES but the contract accepts it"
-        )
-
-    def test_both_paths_reference_the_same_primitive(self) -> None:
-        """D17: one Phone primitive, so the two paths cannot drift."""
-        spec = _spec()
-        onboarding = spec["components"]["schemas"]["OnboardingRequest"]["properties"]["phone"]
-        update = spec["components"]["schemas"]["UserUpdate"]["properties"]["phone"]
-        assert onboarding == update, (
-            "OnboardingRequest.phone and UserUpdate.phone have diverged again"
-        )

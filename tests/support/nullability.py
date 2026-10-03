@@ -3,8 +3,8 @@
 A null is only legal where the schema says `"null"`, and CONTRACT.md §4 gives
 the reason the rest must refuse it: a PATCH is a shallow merge where "an absent
 key is left alone", so a null cannot also mean "leave alone" - there would be no
-way left to say either one. The four places the contract *does* grant it
-(`phone`, `gender`, `vehicle`, `preferences.default_mode`, plus `notes` on a
+way left to say either one. The places the contract *does* grant it
+(`gender`, `vehicle`, `preferences.default_mode`, plus `notes` on a
 ride) are its only way to clear a value.
 
 Enumerating those by hand is what failed: @backend swept the schemas by eye for

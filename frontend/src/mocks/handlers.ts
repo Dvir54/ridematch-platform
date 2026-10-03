@@ -1,7 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import { env } from '../env'
 import { isAdult } from '../lib/dates'
-import { isValidPhone, PHONE_HINT } from '../lib/phone'
 import type {
   OnboardingRequest,
   UserMe,
@@ -22,12 +21,6 @@ import { rideHandlers } from './rideHandlers'
 import { searchHandlers } from './searchHandlers'
 
 const base = env.apiBaseUrl.replace(/\/$/, '')
-
-/** openapi.yaml shares one `Phone` primitive across onboarding and PATCH. */
-const badPhone = () =>
-  fail(422, 'VALIDATION_ERROR', 'Request failed validation.', [
-    { field: 'body.phone', message: PHONE_HINT },
-  ])
 
 /**
  * Preferences shallow-merge, and the `notifications` sub-object merges too
@@ -73,9 +66,6 @@ const userHandlers = [
         { field: 'body.accepted_terms', message: 'Acceptance is required.' },
       ])
     }
-    if (body.phone !== null && body.phone !== undefined && !isValidPhone(body.phone)) {
-      return badPhone()
-    }
     if (!isAdult(body.date_of_birth)) {
       return fail(422, 'UNDERAGE', 'You must be 18 or older.', [
         { field: 'body.date_of_birth', message: 'Must be 18 or older.' },
@@ -86,7 +76,6 @@ const userHandlers = [
       id: 1,
       email: 'you@example.com',
       name: body.name,
-      phone: body.phone ?? null,
       date_of_birth: body.date_of_birth,
       gender: body.gender ?? null,
       is_admin: false,
@@ -109,9 +98,6 @@ const userHandlers = [
     const me = db.me
 
     const patch = (await request.json()) as UserUpdate
-    if (patch.phone !== null && patch.phone !== undefined && !isValidPhone(patch.phone)) {
-      return badPhone()
-    }
     if (
       patch.vehicle === null &&
       db.rides.some(

@@ -11,7 +11,6 @@ import { CheckboxField, SelectField, TextField } from '../../components/Field'
 import { ErrorNotice, FullScreenLoader } from '../../components/states'
 import { Wordmark } from '../../components/Wordmark'
 import { isAdult, todayAsDateInput } from '../../lib/dates'
-import { isValidPhone, PHONE_HINT } from '../../lib/phone'
 import { validateVehicle } from '../../lib/vehicle'
 
 const GENDERS: { value: Gender; label: string }[] = [
@@ -23,7 +22,6 @@ const GENDERS: { value: Gender; label: string }[] = [
 
 interface FormState {
   name: string
-  phone: string
   dateOfBirth: string
   gender: string
   addVehicle: boolean
@@ -43,7 +41,6 @@ type Errors = Partial<Record<keyof FormState, string>>
  */
 const FIELD_OWNERS: Record<string, keyof FormState> = {
   name: 'name',
-  phone: 'phone',
   date_of_birth: 'dateOfBirth',
   gender: 'gender',
   accepted_terms: 'acceptedTerms',
@@ -57,9 +54,6 @@ function validate(form: FormState): Errors {
   const errors: Errors = {}
 
   if (!form.name.trim()) errors.name = 'Tell drivers what to call you.'
-  if (form.phone.trim() && !isValidPhone(form.phone)) {
-    errors.phone = PHONE_HINT
-  }
 
   if (!form.dateOfBirth) {
     errors.dateOfBirth = 'Enter your date of birth.'
@@ -87,7 +81,6 @@ export function OnboardingScreen() {
 
   const [form, setForm] = useState<FormState>({
     name: '',
-    phone: '',
     dateOfBirth: '',
     gender: '',
     addVehicle: false,
@@ -121,7 +114,6 @@ export function OnboardingScreen() {
 
     const body: OnboardingRequest = {
       name: candidate.name.trim(),
-      phone: candidate.phone.trim() || null,
       date_of_birth: candidate.dateOfBirth,
       gender: candidate.gender ? (candidate.gender as Gender) : null,
       vehicle: candidate.addVehicle
@@ -207,17 +199,6 @@ export function OnboardingScreen() {
             setNameTouched(true)
             set('name', event.target.value)
           }}
-        />
-
-        <TextField
-          label="Phone"
-          type="tel"
-          optional
-          autoComplete="tel"
-          hint="Shared with the other side once a seat is agreed."
-          value={form.phone}
-          error={errors.phone}
-          onChange={(event) => set('phone', event.target.value)}
         />
 
         <TextField

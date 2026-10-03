@@ -9,15 +9,14 @@ from __future__ import annotations
 import pytest
 
 from support.assertions import expect_error, expect_status, expect_validation_error
-from support.factories import INVALID_PHONES, VALID_PHONES
 
 ME = "/users/me"
 DEFAULT_NOTIFICATIONS = {"email": True, "push": True, "websocket": True}
 
 # openapi.yaml decides nullability field by field: `UserUpdate` grants `"null"`
-# to phone, gender and vehicle, and `UserPreferencesPatch` to default_mode.
+# to gender and vehicle, and `UserPreferencesPatch` to default_mode.
 NEVER_NULLABLE = ["name", "preferences"]
-NULLABLE = ["phone", "gender", "vehicle"]
+NULLABLE = ["gender", "vehicle"]
 
 
 class TestGet:
@@ -56,14 +55,10 @@ class TestPatchProfileFields:
         assert body["name"] == "Dana"
         assert expect_status(await client.get(ME, headers=user.headers), 200)["name"] == "Dana"
 
-    async def test_update_phone(self, client, user) -> None:
+    async def test_a_phone_key_is_ignored(self, client, user) -> None:
+        """CONTRACT.md §4 (D22): no phone is collected; the key is ignored like any unknown one."""
         response = await client.patch(ME, json={"phone": "+972 52-000-0000"}, headers=user.headers)
-        assert expect_status(response, 200)["phone"] == "+972 52-000-0000"
-
-    async def test_clear_phone_with_null(self, client, users) -> None:
-        user = await users.create(phone="+972 52-000-0000")
-        response = await client.patch(ME, json={"phone": None}, headers=user.headers)
-        assert expect_status(response, 200)["phone"] is None
+        assert "phone" not in expect_status(response, 200)
 
     async def test_update_gender(self, client, user) -> None:
         response = await client.patch(ME, json={"gender": "other"}, headers=user.headers)
@@ -81,36 +76,6 @@ class TestPatchProfileFields:
             await client.patch(ME, json={"name": "Changed"}, headers=user.headers), 200
         )
         assert body["gender"] == "male"
-
-
-class TestPatchPhone:
-    """D17 / contract 0.4.0: PATCH enforces the same Phone format onboarding does."""
-
-    @pytest.mark.parametrize("phone", VALID_PHONES)
-    async def test_accepted_formats(self, client, user, phone: str) -> None:
-        response = await client.patch(ME, json={"phone": phone}, headers=user.headers)
-        assert expect_status(response, 200)["phone"] == phone
-
-    @pytest.mark.parametrize("phone", list(INVALID_PHONES.values()), ids=list(INVALID_PHONES))
-    async def test_rejected_formats(self, client, user, phone: str) -> None:
-        response = await client.patch(ME, json={"phone": phone}, headers=user.headers)
-        expect_validation_error(response, field="phone")
-
-    async def test_a_rejected_phone_leaves_the_old_one_alone(self, client, users) -> None:
-        user = await users.create(phone="050-123-4567")
-        await client.patch(ME, json={"phone": "call me"}, headers=user.headers)
-        body = expect_status(await client.get(ME, headers=user.headers), 200)
-        assert body["phone"] == "050-123-4567"
-
-    async def test_null_still_clears(self, client, users) -> None:
-        user = await users.create(phone="050-123-4567")
-        response = await client.patch(ME, json={"phone": None}, headers=user.headers)
-        assert expect_status(response, 200)["phone"] is None
-
-    async def test_omitting_the_key_leaves_it_alone(self, client, users) -> None:
-        user = await users.create(phone="050-123-4567")
-        response = await client.patch(ME, json={"name": "Dana"}, headers=user.headers)
-        assert expect_status(response, 200)["phone"] == "050-123-4567"
 
 
 class TestPatchPreferences:
@@ -236,7 +201,7 @@ class TestPatchValidation:
 
 class TestPatchNullability:
     """openapi.yaml decides this field by field: a null is only legal where the
-    schema says `"null"`. `UserUpdate` grants it to `phone`, `gender` and
+    schema says `"null"`. `UserUpdate` grants it to `gender` and
     `vehicle`, and `UserPreferencesPatch` grants it to `default_mode` - nowhere
     else. CONTRACT.md 4 adds the reason the rest must refuse it: a PATCH is a
     shallow merge where "an absent key is left alone", so a null cannot mean
@@ -279,7 +244,7 @@ class TestPatchNullability:
         """The other half of the pair, and the half that would break first if a
         blanket no-nulls rule were applied: these four nulls are the contract's
         only way to remove a value."""
-        driver = await users.create_driver(phone="050-123-4567", gender="female")
+        driver = await users.create_driver(gender="female")
         body = expect_status(
             await client.patch(ME, json={field: None}, headers=driver.headers), 200
         )

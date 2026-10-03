@@ -13,9 +13,7 @@ from support import clock, env
 from support.assertions import expect_error, expect_status, expect_validation_error
 from support.factories import (
     DEFAULT_VEHICLE,
-    INVALID_PHONES,
     OMIT,
-    VALID_PHONES,
     onboarding_payload,
 )
 from support.keys import auth_header
@@ -68,9 +66,8 @@ class TestHappyPath:
         assert prefs["notifications"]["email"] is True
 
     async def test_optional_fields(self, client, users) -> None:
-        response = await users.onboard_response(phone="+972 50-123-4567", gender="female")
+        response = await users.onboard_response(gender="female")
         body = expect_status(response, 201)
-        assert body["phone"] == "+972 50-123-4567"
         assert body["gender"] == "female"
 
     async def test_profile_is_visible_immediately(self, client, users) -> None:
@@ -179,14 +176,11 @@ class TestBodyValidation:
     async def test_invalid_gender(self, client, users) -> None:
         expect_validation_error(await users.onboard_response(gender="spaceship"), field="gender")
 
-    @pytest.mark.parametrize("phone", list(INVALID_PHONES.values()), ids=list(INVALID_PHONES))
-    async def test_malformed_phone(self, client, users, phone: str) -> None:
-        """The same Phone primitive as PATCH /users/me - one list, no drift."""
-        expect_validation_error(await users.onboard_response(phone=phone), field="phone")
-
-    @pytest.mark.parametrize("phone", VALID_PHONES)
-    async def test_accepted_phone(self, client, users, phone: str) -> None:
-        assert expect_status(await users.onboard_response(phone=phone), 201)["phone"] == phone
+    @pytest.mark.parametrize("phone", ["+972 50-123-4567", "call me"])
+    async def test_a_phone_key_is_ignored(self, client, users, phone: str) -> None:
+        """CONTRACT.md §4 (D22): no phone is collected; the key is ignored like any unknown one."""
+        body = expect_status(await users.onboard_response(phone=phone), 201)
+        assert "phone" not in body
 
     async def test_invalid_preference_value(self, client, users) -> None:
         response = await users.onboard_response(preferences={"theme": "neon"})

@@ -140,7 +140,6 @@ async def onboard_user(
         email=email,
         is_admin=is_admin,
         name=data.name,
-        phone=data.phone,
         date_of_birth=data.date_of_birth,
         gender=data.gender.value if data.gender else None,
         is_active=True,
@@ -195,8 +194,6 @@ async def update_user(
     sent = data.model_fields_set
     if data.name is not None:
         user.name = data.name
-    if "phone" in sent:
-        user.phone = data.phone
     if "gender" in sent:
         user.gender = data.gender.value if data.gender else None
     if data.preferences is not None:

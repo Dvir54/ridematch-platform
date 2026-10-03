@@ -19,7 +19,6 @@ USER_ME = {
     "id": 1,
     "email": "rider@ridematch.test",
     "name": "Rider",
-    "phone": None,
     "date_of_birth": "1995-04-01",
     "gender": "female",
     "is_admin": False,

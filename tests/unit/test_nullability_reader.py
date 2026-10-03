@@ -77,7 +77,7 @@ class TestFieldsOf:
     def test_reads_the_real_contract(self) -> None:
         fields = {field.dotted: field.nullable for field in fields_of("UserUpdate")}
 
-        assert fields["phone"] is True
+        assert "phone" not in fields
         assert fields["gender"] is True
         assert fields["vehicle"] is True
         assert fields["preferences.default_mode"] is True

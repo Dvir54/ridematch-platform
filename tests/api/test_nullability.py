@@ -43,7 +43,6 @@ FULL_RIDE_PREFERENCES = {"smoking": True, "pets": True, "music": False, "gender_
 
 def full_onboarding() -> dict:
     return onboarding_payload(
-        phone="050-123-4567",
         gender="female",
         preferences=dict(FULL_PREFERENCES),
         vehicle=dict(DEFAULT_VEHICLE),
@@ -53,7 +52,6 @@ def full_onboarding() -> dict:
 def full_user_update() -> dict:
     return {
         "name": "Dana Cohen",
-        "phone": "050-123-4567",
         "gender": "female",
         "preferences": dict(FULL_PREFERENCES),
         "vehicle": dict(DEFAULT_VEHICLE),
@@ -115,11 +113,10 @@ class TestTheSpecIsReadable:
         )
 
     async def test_the_known_nullable_fields_are_found(self) -> None:
-        """A sanity check on the reader itself: the five nulls the contract
-        grants are the five it should report, so a reader that quietly returned
+        """A sanity check on the reader itself: the four nulls the contract
+        grants are the four it should report, so a reader that quietly returned
         'nothing is nullable' could not make this file pass vacuously."""
         granted = {
-            ("UserUpdate", "phone"),
             ("UserUpdate", "gender"),
             ("UserUpdate", "vehicle"),
             ("UserUpdate", "preferences.default_mode"),
