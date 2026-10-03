@@ -5,8 +5,10 @@ database without touching the process environment.
 """
 
 import asyncio
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,6 +33,8 @@ from app.redis_client import create_redis
 from app.ws import WsRegistry
 from app.ws import router as ws_router
 
+logger = logging.getLogger("app.main")
+
 ROUTERS = (
     health_router,
     users_router,
@@ -48,6 +52,13 @@ ROUTERS = (
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level, json_logs=settings.app_env == "production")
+    logger.info(
+        "config env=%s issuer=%s parties=%s db_host=%s",
+        settings.app_env,
+        settings.clerk_issuer or "-",
+        ",".join(settings.clerk_authorized_parties) or "-",
+        urlsplit(settings.effective_database_url).hostname or "-",
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
@@ -68,7 +79,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title="RideMatch API",
         version=__version__,
         lifespan=lifespan,
-        docs_url="/docs",
+        docs_url=None if settings.is_production else "/docs",
         redoc_url=None,
         openapi_url=f"{settings.api_prefix}/openapi.json",
     )

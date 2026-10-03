@@ -12,7 +12,7 @@ from datetime import UTC, date, datetime, timedelta
 from sqlalchemy import delete, or_, select
 
 from app.clock import utc_now
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.db import create_engine, create_sessionmaker
 from app.models import Notification, Rating, Ride, RideRequest, User
 
@@ -78,8 +78,10 @@ def _ride(driver: User, start: tuple, end: tuple, departure: datetime, price: st
     )
 
 
-async def seed(*, reset: bool) -> str:
-    settings = get_settings()
+async def seed(*, reset: bool, settings: Settings | None = None) -> str:
+    settings = settings or get_settings()
+    if settings.is_production:
+        raise RuntimeError("Refusing to seed: APP_ENV=production.")
     engine = create_engine(settings)
     sessionmaker = create_sessionmaker(engine)
     try:

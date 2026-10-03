@@ -129,8 +129,13 @@ async def onboard_user(
     if await email_exists(db, email):
         raise Conflict("EMAIL_ALREADY_EXISTS", "Another profile already uses this email.")
 
-    # The first admin: this email, and only while no admin exists yet (CONTRACT.md §4 Users).
-    is_admin = bool(settings.admin_email) and email == normalise_email(settings.admin_email)
+    # The first admin, outside production only: this email, while no admin exists yet
+    # (CONTRACT.md §4 Users). Production admins come from `app.admin_cli`.
+    is_admin = (
+        not settings.is_production
+        and bool(settings.admin_email)
+        and email == normalise_email(settings.admin_email)
+    )
     if is_admin and await admin_exists(db):
         is_admin = False
 

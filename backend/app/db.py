@@ -22,7 +22,14 @@ class Base(DeclarativeBase):
 
 def create_engine(settings: Settings) -> AsyncEngine:
     """Engines are lazy, so this is safe to call outside a running event loop."""
-    return create_async_engine(settings.effective_database_url, pool_pre_ping=True, future=True)
+    return create_async_engine(
+        settings.effective_database_url,
+        pool_pre_ping=True,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        connect_args={"command_timeout": settings.db_command_timeout_seconds},
+        future=True,
+    )
 
 
 def create_sessionmaker(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
