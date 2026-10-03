@@ -11,8 +11,28 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Liveness check (DB + Redis reachable) */
+        /** Liveness — the process is serving HTTP. Touches no database or Redis. */
         get: operations["health"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Readiness — this instance can serve requests. The database gates it (2s timeout); Redis is
+         *     reported but never gates it, since only the WebSocket presence counters use it.
+         */
+        get: operations["ready"];
         put?: never;
         post?: never;
         delete?: never;
@@ -33,7 +53,7 @@ export interface paths {
         /**
          * Called by Clerk (via Svix), not by the frontend. Verified with the `svix-id`, `svix-timestamp`
          *     and `svix-signature` headers against CLERK_WEBHOOK_SIGNING_SECRET, using the raw request body.
-         *     Handles `user.updated` (sync email) and `user.deleted` (deactivate). Other event types → 204, ignored.
+         *     Handles `user.updated` (sync email) and `user.deleted` (deactivate and anonymise, CONTRACT.md §4). Other event types → 204, ignored.
          *     Idempotent on `svix-id`. Deliveries may repeat or arrive out of order.
          */
         post: operations["clerkWebhook"];
@@ -662,17 +682,6 @@ export interface components {
          * @example 25.50
          */
         Money: string;
-        /**
-         * @description Unverified profile field (SMS verification is out of scope for v1). The same format applies
-         *     wherever a phone is written — onboarding and PATCH /users/me alike.
-         *     Allowed: digits, spaces, hyphens, parentheses, dots, and an optional leading `+`.
-         *     7-20 characters after the `+`, so parenthesised and dotted formats are accepted as typed.
-         * @example +972 50-123-4567
-         * @example 050-123-4567
-         * @example +1 (555) 010-9999
-         * @example +1.555.0199
-         */
-        Phone: string;
         /** @enum {string} */
         Gender: "male" | "female" | "other" | "prefer_not_to_say";
         /** @enum {string} */
@@ -688,7 +697,6 @@ export interface components {
         /** @description Email and password are NOT here, since they live in Clerk. Frontend may prefill name from Clerk. */
         OnboardingRequest: {
             name: string;
-            phone?: components["schemas"]["Phone"] | null;
             /**
              * Format: date
              * @description Must be 18+ today (422 UNDERAGE)
@@ -796,7 +804,6 @@ export interface components {
             /** Format: email */
             email: string;
             name: string;
-            phone?: string | null;
             /** Format: date */
             date_of_birth?: string | null;
             gender?: components["schemas"]["Gender"] | null;
@@ -813,7 +820,7 @@ export interface components {
             /** Format: date-time */
             last_login_at?: string | null;
         };
-        /** @description What other users may see. No email/phone/DOB. */
+        /** @description What other users may see. No email/DOB/gender. */
         UserPublic: {
             id: number;
             name: string;
@@ -831,7 +838,6 @@ export interface components {
         /** @description Email and password are changed in Clerk (UserProfile component), not here. is_admin/is_active are admin-only. */
         UserUpdate: {
             name?: string;
-            phone?: components["schemas"]["Phone"] | null;
             gender?: components["schemas"]["Gender"] | null;
             preferences?: components["schemas"]["UserPreferencesPatch"];
             /** @description Full replace. null removes it (409 VEHICLE_REQUIRED if the user has upcoming/full rides). */
@@ -1032,16 +1038,33 @@ export interface components {
             created_at: string;
         };
         /**
-         * @description Messages the server sends on `GET /ws?token=<access_token>` (see CONTRACT.md §6).
+         * @description Messages the server sends on `GET /ws` (see CONTRACT.md §6). `ready` answers a valid
+         *     `auth` message; nothing else is sent before it.
          *     Not an HTTP endpoint — defined here so all sides share the payload shape.
          */
         WsServerMessage: {
+            /** @constant */
+            event: "ready";
+        } | {
             /** @constant */
             event: "notification";
             data: components["schemas"]["Notification"];
         } | {
             /** @constant */
             event: "pong";
+        };
+        /**
+         * @description Messages the client sends on `GET /ws` (see CONTRACT.md §6). The first message must be
+         *     `auth`, within 10 seconds of connecting; after that, only `ping`.
+         */
+        WsClientMessage: {
+            /** @constant */
+            event: "auth";
+            /** @description A fresh Clerk session token from getToken() */
+            token: string;
+        } | {
+            /** @constant */
+            event: "ping";
         };
         AdminUserDetail: {
             user: components["schemas"]["UserMe"];
@@ -1122,6 +1145,18 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /**
+         * @description The request body is over 64 KiB (PAYLOAD_TOO_LARGE). Applies to every endpoint that takes a
+         *     body; documented once here rather than on each operation (CONTRACT.md §5).
+         */
+        PayloadTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
     };
     parameters: {
         UserId: number;
@@ -1155,11 +1190,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** @enum {string} */
-                        status: "ok" | "degraded";
-                        db: boolean;
+                        /** @constant */
+                        status: "ok";
+                    };
+                };
+            };
+        };
+    };
+    ready: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ready */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "ready";
+                        /** @constant */
+                        db: true;
                         redis: boolean;
                     };
+                };
+            };
+            /** @description Not ready — the database is unreachable (NOT_READY) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };

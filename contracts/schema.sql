@@ -1,6 +1,7 @@
 -- RideMatch — reference schema (PostgreSQL 15+)
--- Source of truth for table shape. The backend implements it as SQLAlchemy models + Alembic
--- migrations; tests may load this file directly into a throwaway DB.
+-- A REFERENCE, not a source: every real database (production, dev and the test DB) is built by
+-- the Alembic migration chain in backend/alembic/versions. tests/migrations keeps this file
+-- identical to what `alembic upgrade head` produces, so it is safe to read as documentation.
 -- Owned by @backend. Any change: update here, commit, message @frontend and @tests.
 
 BEGIN;
@@ -20,7 +21,6 @@ CREATE TABLE users (
     email                   varchar(255) NOT NULL,              -- mirror of Clerk primary email
     is_admin                boolean      NOT NULL DEFAULT false,
     name                    varchar(100) NOT NULL,
-    phone                   varchar(20),
     date_of_birth           date         NOT NULL,              -- 18+ checked at onboarding
     gender                  varchar(20)
         CHECK (gender IN ('male', 'female', 'other', 'prefer_not_to_say')),

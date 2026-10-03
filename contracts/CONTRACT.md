@@ -6,7 +6,7 @@ If the two disagree, `openapi.yaml` wins for shapes and this file wins for behav
 | File | What it defines |
 |---|---|
 | `openapi.yaml` | Every endpoint, request/response schema, error response |
-| `schema.sql` | Table shapes, constraints, indexes (reference; backend implements via SQLAlchemy + Alembic) |
+| `schema.sql` | Table shapes, constraints, indexes, as a **reference**. The Alembic migration chain (`backend/alembic/versions`) is what defines every real database, tests included; a test keeps this file identical to it |
 | `CONTRACT.md` | Conventions, state machines, business rules, matching formula, WS protocol, error codes |
 | `../.env.example` | Every config variable |
 
@@ -29,15 +29,17 @@ If the two disagree, `openapi.yaml` wins for shapes and this file wins for behav
 
 - **Base path:** `/api/v1`. WebSocket at `/api/v1/ws`.
 - **Versioning:** there's only v1. `/v2` is added only for a breaking change once clients exist that you can't update in lockstep. Additive changes (new endpoints, new optional fields) stay in v1. With a domain, the prefix stays the same: `https://api.<domain>/api/v1` (or `https://<domain>/api/v1` when the frontend is served from the same origin).
-- **Redis** is used only for the WebSocket connection registry (refresh tokens are gone with Clerk).
+- **Redis** is used only for the WebSocket connection registry (refresh tokens are gone with Clerk). Nothing depends on it to function: `/ready` reports it but isn't gated by it.
+- **Request size:** a request body over 64 KiB is refused with 413 `PAYLOAD_TOO_LARGE` before any handler runs. Every legitimate body is far smaller.
 - **Auth: Clerk.** Clerk owns sign-up, sign-in, sign-out, passwords, email verification, "Sign in with Google" and MFA. RideMatch has **no** register/login/refresh/logout/password endpoints and never stores passwords.
   - **Frontend:** wraps the app in Clerk's provider and uses its `<SignIn/>`, `<SignUp/>` and `<UserProfile/>` components. Before every API call it takes a fresh token from `getToken()` and sends `Authorization: Bearer <clerk_session_token>`. Clerk refreshes the token automatically, so there's no refresh flow to build.
-  - **Backend:** on every request except `/health` and `/webhooks/clerk`, it verifies the token as RS256, against Clerk's JWKS (`CLERK_JWKS_URL`, cached) or, if `CLERK_JWT_KEY` is set, against that PEM public key with no network call. It checks `exp`/`nbf` (with 5s leeway), `iss == CLERK_ISSUER`, and `azp` ∈ `CLERK_AUTHORIZED_PARTIES`. Any failure → 401 `UNAUTHENTICATED`.
+  - **Backend:** on every request except `/health`, `/ready` and `/webhooks/clerk`, it verifies the token as RS256, against Clerk's JWKS (`CLERK_JWKS_URL`, cached) or, if `CLERK_JWT_KEY` is set, against that PEM public key with no network call. It checks `exp`/`nbf` (with 5s leeway), `iss == CLERK_ISSUER`, and `azp` ∈ `CLERK_AUTHORIZED_PARTIES`. Any failure → 401 `UNAUTHENTICATED`.
+  - **Production configuration fails fast:** with `APP_ENV=production` the backend refuses to start unless `CLERK_ISSUER` (https, not a `*.clerk.accounts.dev` development instance), `CLERK_JWT_KEY` (a parseable RSA public key, so production verifies with no network call), `CLERK_AUTHORIZED_PARTIES` and `CORS_ORIGINS` (https, not localhost), `CLERK_SECRET_KEY` (`sk_live_…`) and `CLERK_WEBHOOK_SIGNING_SECRET` (`whsec_…`) are all valid, and `ADMIN_EMAIL` is empty. Every problem is reported at once.
   - **Claims used:** `sub` = Clerk user id (→ `users.clerk_user_id`), and `email` = primary email. `email` is a **custom claim**: in the Clerk Dashboard → Sessions → Customize session token, add `{"email": "{{user.primary_email_address}}"}`.
   - **User lookup:** by `clerk_user_id`. No row → 403 `ONBOARDING_REQUIRED` (except on `POST /users/me/onboarding`). A row with `is_active=false` → 403 `ACCOUNT_DEACTIVATED`.
-  - Because the user lookup runs on every authenticated request, **any** authenticated endpoint can answer 403 `ONBOARDING_REQUIRED` or `ACCOUNT_DEACTIVATED`. `openapi.yaml` documents a 403 on all of them; only `/health` and `/webhooks/clerk` (both `security: []`) can't.
+  - Because the user lookup runs on every authenticated request, **any** authenticated endpoint can answer 403 `ONBOARDING_REQUIRED` or `ACCOUNT_DEACTIVATED`. `openapi.yaml` documents a 403 on all of them; only `/health`, `/ready` and `/webhooks/clerk` (all `security: []`) can't.
   - **Admin** is `users.is_admin` in **our** DB, not in Clerk. It's read from the DB on each request, so a change applies immediately.
-  - **Sign-up flow:** Clerk sign-up → frontend calls `GET /users/me` → 403 `ONBOARDING_REQUIRED` → frontend shows the onboarding form (name, phone, DOB, gender, ToS) → `POST /users/me/onboarding` → 201 → Role Selection.
+  - **Sign-up flow:** Clerk sign-up → frontend calls `GET /users/me` → 403 `ONBOARDING_REQUIRED` → frontend shows the onboarding form (name, DOB, gender, ToS) → `POST /users/me/onboarding` → 201 → Role Selection.
   - **Webhooks** (`POST /webhooks/clerk`) are only for keeping data in sync later (email change, account deleted). Onboarding never waits on them, because they are async and can be delayed, repeated or out of order.
   - **Tests** never call Clerk. With `APP_ENV=test`, @tests generates its own RSA key pair, sets `CLERK_JWT_KEY` to the public key, and signs tokens with the private key using the same claims (`sub`, `email`, `azp`, `iss`, `exp`, `nbf`). The backend has no test-only bypass: the code path is identical, only the key differs.
 - **IDs:** integers.
@@ -46,7 +48,7 @@ If the two disagree, `openapi.yaml` wins for shapes and this file wins for behav
 - **Emails:** lowercased and trimmed by the server before storing or looking up.
 - **Lists:** plain JSON arrays with `limit` (default 20, max 100) and `offset`. Admin lists also return an `X-Total-Count` header.
 - **Status filters:** comma-separated, e.g. `?status=upcoming,full`. An unknown value is a 422 `VALIDATION_ERROR` with `details[].field = "query.status"`, the same answer a single-value enum parameter gives. Repeats are ignored, and an empty value (`?status=`, or one that is all commas) means **no filter** rather than an error — it's what a filter UI sends with nothing selected.
-- **Non-nullable fields:** a property `openapi.yaml` does not give a `"null"` type may be **absent** from a `PATCH` body — that means "leave it alone" — but sending it as `null` is a 422 `VALIDATION_ERROR`. `details[].field` names the field itself (`body.start_lat`, `body.preferences.pets`), never just `body`. The nullable ones are `notes` on a ride, `phone`, `gender` and `vehicle` on a user, and `preferences.default_mode`.
+- **Non-nullable fields:** a property `openapi.yaml` does not give a `"null"` type may be **absent** from a `PATCH` body — that means "leave it alone" — but sending it as `null` is a 422 `VALIDATION_ERROR`. `details[].field` names the field itself (`body.start_lat`, `body.preferences.pets`), never just `body`. The nullable ones are `notes` on a ride, `gender` and `vehicle` on a user, and `preferences.default_mode`.
 - **Every 422 carries `details`**, whatever its `code` — the specific ones (`UNDERAGE`, `TERMS_NOT_ACCEPTED`, `DEPARTURE_IN_PAST`) as much as `VALIDATION_ERROR` — with at least one entry. A client can rely on having somewhere to put the message: `code` gives the sentence, `field` the place. A failure that belongs to the body as a whole rather than one field says `body`.
 - **`details` is for display, not branching.** `details[].field` names the most specific location the server can attribute a 422 to, and a later version may make it **more** specific without that counting as breaking — `body` becoming `body.start_lat` is a fix, not a break. So: branch on `code`, use `field` to highlight an input, and always keep a fallback for a `field` you can't map onto one (a coordinate inside an address picker, a key inside a nested object). A client whose only path to showing *something* is a coarse `field` will go silent the moment the server gets more precise (2026-10-02, after exactly that near-miss on the Edit Ride form).
 - **Errors:** always `{ "code": "...", "message": "...", "details"?: [...] }`. The backend overrides FastAPI's default `{"detail": ...}` and its 422 format to match. Clients branch on `code`, never on `message`.
@@ -116,11 +118,12 @@ pending ──ride started / stale──▶ rejected
 
 **Users**
 - 18+ at onboarding (422 `UNDERAGE`). `accepted_terms` must be `true` (422 `TERMS_NOT_ACCEPTED`), and `terms_accepted_at` is stored.
-- If the onboarding email equals `ADMIN_EMAIL` **and no admin exists yet**, the user is created with `is_admin=true`. This is only safe because Clerk requires a verified email at sign-up, so keep that setting on. That's how the first admin exists: sign up in Clerk with that email and onboard. More admins: set `is_admin` by script/SQL.
-- Password and email changes happen in Clerk. Webhook `user.updated` updates `users.email`. Webhook `user.deleted` sets `is_active=false` and closes the user's sockets. Their rides and ratings stay for history.
+- **Admins in production** are granted only by the CLI, run on the server: `python -m app.admin_cli grant <email>` (and `revoke <email>`). It refuses an unknown or deactivated user, is idempotent, and exits non-zero on failure. Nothing promotes a user automatically in production.
+- **Development and test only:** if the onboarding email equals `ADMIN_EMAIL` **and no admin exists yet**, the user is created with `is_admin=true`. With `APP_ENV=production` this path is off, and the backend refuses to start if `ADMIN_EMAIL` is set. Clerk must still require a verified email at sign-up, since email identity also drives `EMAIL_ALREADY_EXISTS`.
+- Password and email changes happen in Clerk. Webhook `user.updated` updates `users.email`. Webhook `user.deleted` (and `python -m app.admin_cli anonymise <email>` for a deletion request made outside Clerk) sets `is_active=false`, closes the user's sockets and **anonymises** the profile: `name` → `Deleted user`, `email` → `deleted-<id>@deleted.invalid`, `clerk_user_id` → `deleted_<id>`, `gender`, `vehicle` and `preferences` → null, `date_of_birth` → `1900-01-01` (the column is NOT NULL; the 18+ check already happened at onboarding). Rides, requests and ratings stay, so the other party's history is intact; their free text (ride notes, rating comments) is kept as written.
 - Admin deactivate → `is_active=false` + ban the user through Clerk's Backend API (`CLERK_SECRET_KEY`), which ends their sessions. Reactivate → unban. If the Clerk call fails, the DB change still applies (it's enforced anyway) and the failure is logged.
 - `last_login_at` is updated on an authenticated request when it's older than 1 hour. It feeds `active_users` in analytics.
-- `phone` is optional and unverified, but wherever it is written — onboarding and `PATCH /users/me` alike — it must match the shared `Phone` format in `openapi.yaml`: digits, spaces, hyphens, parentheses, dots and an optional leading `+`, 7–20 characters after the `+`. So `+1 (555) 010-9999` and `+1.555.0199` are accepted as typed, while `""`, `abc` and `12345` are 422. One schema, so the two write paths can't drift apart again.
+- RideMatch does **not** collect a phone number (removed in 0.5.0, D22). A `phone` key in a request body is ignored like any other unknown key.
 - `preferences` read → the server fills defaults for missing keys (`UserPreferences`). Writes use `UserPreferencesPatch`, which carries no defaults: `PATCH` and onboarding shallow-merge what is sent (the `notifications` sub-object is merged too), an absent key is left alone, and `default_mode: null` clears it. Booleans must be real JSON booleans — `"yes"` is a 422.
 
 ## 5. Error codes
@@ -151,12 +154,16 @@ pending ──ride started / stale──▶ rejected
 | 409 | `RIDE_NOT_COMPLETED` | rating before completion |
 | 409 | `ALREADY_RATED` | duplicate rating |
 | 409 | `CANNOT_DEACTIVATE_SELF` | admin deactivating self |
+| 413 | `PAYLOAD_TOO_LARGE` | request body over 64 KiB, on any endpoint |
 | 422 | `VALIDATION_ERROR` | schema validation; `details` lists fields |
 | 422 | `UNDERAGE` / `TERMS_NOT_ACCEPTED` / `DEPARTURE_IN_PAST` | specific validation failures |
+| 503 | `NOT_READY` | `GET /ready` only: the database is unreachable |
 
 ## 6. WebSocket protocol
 
-- Connect: `GET /api/v1/ws?token=<clerk_session_token>`, with a fresh token from `getToken()` right before connecting. Browsers can't set headers on a WebSocket, hence the query param. An invalid or expired token, or no profile → the server closes with code **4401**; a deactivated account → **4403**. On 4401, the client gets a new token and reconnects with backoff.
+- Connect: `GET /api/v1/ws` with **no token in the URL** (URLs end up in access and proxy logs). The page's `Origin` must be one of `CORS_ORIGINS`, or the server closes with **4403**.
+- Authenticate: the client's **first message** must be `{"event": "auth", "token": "<clerk_session_token>"}`, with a fresh token from `getToken()`, within **10 seconds** of connecting. The server answers `{"event": "ready"}` and only then registers the socket. An invalid or expired token, no profile, any other first message, or no `auth` within 10 s → the server closes with code **4401**; a deactivated account → **4403**. On 4401, the client gets a new token and reconnects with backoff. A `token` query parameter is ignored.
+- Frames are capped at 64 KiB.
 - The server registers the connection in Redis (`ws:online:{user_id}`, a counter, since there can be several tabs).
 - Server → client: `{"event": "notification", "data": <Notification>}`, the exact same object `GET /notifications` returns.
 - Client → server: `{"event": "ping"}` every 25s. The server replies `{"event": "pong"}`. With no ping for 60s, the server closes the socket.
@@ -223,6 +230,7 @@ Let `R = SEARCH_RADIUS_KM`, `p = haversine(passenger start, ride start)`, `d = h
 | D19 | **The Phase 2 edge cases are now written down** (2026-10-01): the 409 order on creating a request, `available_seats` returning to `capacity` when a ride is cancelled, a locked field counting as a change by presence, `DEPARTURE_IN_PAST` applying to `PATCH` too, `INVALID_STATE_TRANSITION` (not `TOO_LATE_TO_CANCEL`) once the ride has started, `NOT_ENOUGH_SEATS` when approving on a `full` ride, and an unknown `status` filter being a 422. Each one was undefined before, so nothing documented changed meaning | Writing the ride loop turned up seven places where two readings were equally defensible. @tests has to assert exactly one of them, so the contract now says which |
 
 | D21 | **Phase 5 semantics written down** (2026-10-02). `/users/me/stats` — as_driver: `rides_offered` = every ride the user ever created (any status, cancelled included); `rides_completed` = their rides with `status=completed`; `upcoming_rides` = their `upcoming` + `full` rides; `pending_requests` = pending requests across all their rides; `passengers_carried` = sum of `seats_requested` over approved requests on their **completed** rides. as_passenger: `trips_requested` = every request the user ever made (any status); `trips_completed` = their **approved** requests on `completed` rides; `upcoming_trips` = their **approved** requests on `upcoming`/`full` rides. "Upcoming" therefore means the same thing on both sides, and an `in_progress` ride counts in neither the upcoming nor the completed counter. `/ratings/pending` lists only completed rides whose `departure_time` is within the last 30 days, ordered by `departure_time` descending, then `to_user.id` ascending. `POST /ratings` checks in this order: ride 404, `to_user` 404, 409 `RIDE_NOT_COMPLETED`, 403 `NOT_A_PARTICIPANT` (self-rating and passenger-rating-passenger included), 409 `ALREADY_RATED`; its `rating_received` notification points at the **ride** (`related_entity_type="ride"`), since `rating` is not one of the two values the column allows. Additive — nothing documented changed meaning | Every counter had two defensible readings (does a cancelled ride count as offered? is a started trip still upcoming?), and @tests has to assert exactly one |
+| D22 | **0.5.0 production hardening** (2026-10-03, Dvir approved). Breaking: WebSocket auth moved from `?token=` to a first `auth` message, with an `Origin` check and a `ready` reply; `/health` became pure liveness (`{"status": "ok"}`) and the DB check moved to the new `/ready` (503 `NOT_READY`); the phone number was removed from onboarding, `PATCH /users/me` and every user object. Additive: 413 `PAYLOAD_TOO_LARGE`; production admins via `app.admin_cli` (the `ADMIN_EMAIL` bootstrap is development-only); `user.deleted` anonymises the profile | Tokens must not appear in URLs/logs; host health checks need a readiness signal that fails when the DB does; the phone was collected but used by nothing; no unverified or unintended user may become admin by signing up first; deleting an account must remove its personal data |
 
 ## 9. Scope — what's in v1 and what's later (decided 2026-09-30)
 
@@ -230,7 +238,7 @@ Let `R = SEARCH_RADIUS_KM`, `p = haversine(passenger start, ride start)`, `d = h
 |---|---|---|---|
 | G1 | Vehicle info | **v1** | See §4 Vehicles, D14 |
 | G2 | Payment methods | later | Hide from the Profile screen. Payment is off-app (cash/Bit); price is informational |
-| G3 | Phone verification (SMS) | later | Phone is an unverified profile field |
+| G3 | Phone number | removed | Not collected (D22) |
 | G4 | Avg match score in analytics | later | Removed from `AnalyticsSummary`. Would need `match_score` stored on `ride_requests` |
 | G5a | Address autocomplete (address → lat/lng) | **v1** | Frontend only, **Mapbox** Search/Geocoding. Sends `*_address` + `*_lat/lng` exactly as the contract says; the backend doesn't call Mapbox |
 | G5b | Map / route preview | later | Search results "map toggle" and Create Ride "route preview" are hidden in v1 |

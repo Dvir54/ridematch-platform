@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: RideMatch API
-  version: 0.4.9
+  version: 0.5.0
   description: |
     Contract for the RideMatch monolith (FastAPI). Source of truth for backend, frontend and tests.
     See CONTRACT.md for conventions, state machines, business rules, error codes and the WebSocket protocol.
@@ -35,7 +35,7 @@ paths:
       tags: [system]
       operationId: health
       security: []
-      summary: Liveness check (DB + Redis reachable)
+      summary: Liveness — the process is serving HTTP. Touches no database or Redis.
       responses:
         "200":
           description: OK
@@ -43,11 +43,35 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [status]
+                properties:
+                  status: { type: string, const: ok }
+
+  /ready:
+    get:
+      tags: [system]
+      operationId: ready
+      security: []
+      summary: |
+        Readiness — this instance can serve requests. The database gates it (2s timeout); Redis is
+        reported but never gates it, since only the WebSocket presence counters use it.
+      responses:
+        "200":
+          description: Ready
+          content:
+            application/json:
+              schema:
+                type: object
                 required: [status, db, redis]
                 properties:
-                  status: { type: string, enum: [ok, degraded] }
-                  db: { type: boolean }
+                  status: { type: string, const: ready }
+                  db: { type: boolean, const: true }
                   redis: { type: boolean }
+        "503":
+          description: Not ready — the database is unreachable (NOT_READY)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   # ───────────────────────────── webhooks ─────────────────────────────
   /webhooks/clerk:
@@ -58,7 +82,7 @@ paths:
       summary: |
         Called by Clerk (via Svix), not by the frontend. Verified with the `svix-id`, `svix-timestamp`
         and `svix-signature` headers against CLERK_WEBHOOK_SIGNING_SECRET, using the raw request body.
-        Handles `user.updated` (sync email) and `user.deleted` (deactivate). Other event types → 204, ignored.
+        Handles `user.updated` (sync email) and `user.deleted` (deactivate and anonymise, CONTRACT.md §4). Other event types → 204, ignored.
         Idempotent on `svix-id`. Deliveries may repeat or arrive out of order.
       parameters:
         - { name: svix-id, in: header, required: true, schema: { type: string } }
@@ -932,6 +956,13 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
+    PayloadTooLarge:
+      description: |
+        The request body is over 64 KiB (PAYLOAD_TOO_LARGE). Applies to every endpoint that takes a
+        body; documented once here rather than on each operation (CONTRACT.md §5).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
 
   schemas:
     # ── primitives ──
@@ -978,16 +1009,6 @@ components:
         number in a request body is 422 VALIDATION_ERROR, whether or not it would round-trip.
         1 or 2 decimal places on the way in, or none; always 2 on the way out.
       examples: ["25.50"]
-    Phone:
-      type: string
-      maxLength: 20
-      pattern: '^\+?[0-9 ().\-]{7,20}$'
-      description: |
-        Unverified profile field (SMS verification is out of scope for v1). The same format applies
-        wherever a phone is written — onboarding and PATCH /users/me alike.
-        Allowed: digits, spaces, hyphens, parentheses, dots, and an optional leading `+`.
-        7-20 characters after the `+`, so parenthesised and dotted formats are accepted as typed.
-      examples: ["+972 50-123-4567", "050-123-4567", "+1 (555) 010-9999", "+1.555.0199"]
     Gender:
       type: string
       enum: [male, female, other, prefer_not_to_say]
@@ -1024,10 +1045,6 @@ components:
       required: [name, date_of_birth, accepted_terms]
       properties:
         name: { type: string, minLength: 1, maxLength: 100 }
-        phone:
-          oneOf:
-            - { $ref: "#/components/schemas/Phone" }
-            - { type: "null" }
         date_of_birth:
           type: string
           format: date
@@ -1135,7 +1152,6 @@ components:
         id: { type: integer }
         email: { type: string, format: email }
         name: { type: string }
-        phone: { type: [string, "null"] }
         date_of_birth: { type: [string, "null"], format: date }
         gender:
           oneOf:
@@ -1156,7 +1172,7 @@ components:
         last_login_at: { type: [string, "null"], format: date-time }
     UserPublic:
       type: object
-      description: What other users may see. No email/phone/DOB.
+      description: What other users may see. No email/DOB/gender.
       required: [id, name, driver_rating_count, passenger_rating_count, created_at]
       properties:
         id: { type: integer }
@@ -1175,10 +1191,6 @@ components:
       description: Email and password are changed in Clerk (UserProfile component), not here. is_admin/is_active are admin-only.
       properties:
         name: { type: string, minLength: 1, maxLength: 100 }
-        phone:
-          oneOf:
-            - { $ref: "#/components/schemas/Phone" }
-            - { type: "null" }
         gender:
           oneOf:
             - { $ref: "#/components/schemas/Gender" }
@@ -1419,9 +1431,14 @@ components:
         created_at: { type: string, format: date-time }
     WsServerMessage:
       description: |
-        Messages the server sends on `GET /ws?token=<access_token>` (see CONTRACT.md §6).
+        Messages the server sends on `GET /ws` (see CONTRACT.md §6). `ready` answers a valid
+        `auth` message; nothing else is sent before it.
         Not an HTTP endpoint — defined here so all sides share the payload shape.
       oneOf:
+        - type: object
+          required: [event]
+          properties:
+            event: { const: ready }
         - type: object
           required: [event, data]
           properties:
@@ -1431,6 +1448,20 @@ components:
           required: [event]
           properties:
             event: { const: pong }
+    WsClientMessage:
+      description: |
+        Messages the client sends on `GET /ws` (see CONTRACT.md §6). The first message must be
+        `auth`, within 10 seconds of connecting; after that, only `ping`.
+      oneOf:
+        - type: object
+          required: [event, token]
+          properties:
+            event: { const: auth }
+            token: { type: string, description: A fresh Clerk session token from getToken() }
+        - type: object
+          required: [event]
+          properties:
+            event: { const: ping }
 
     # ── admin ──
     AdminUserDetail:
