@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import DBAPIError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 logger = logging.getLogger(__name__)
@@ -125,6 +126,14 @@ def install_error_handlers(app: FastAPI) -> None:
             content={"code": code, "message": message},
             headers=getattr(exc, "headers", None),
         )
+
+    @app.exception_handler(DBAPIError)
+    async def _database_error(request: Request, exc: DBAPIError) -> JSONResponse:
+        # An id past the int4 range can't exist, so it's a 404 like any other unknown id.
+        if "int32 range" in str(exc.orig):
+            error = NotFound()
+            return JSONResponse(status_code=error.status_code, content=error.body())
+        return await _unhandled(request, exc)
 
     @app.exception_handler(Exception)
     async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
