@@ -542,15 +542,15 @@ Render has only one check path, used both to gate deploys and to monitor. Point 
 
 ## 12. Personal data inventory and legal pages (B-4)
 
-**What's stored** (`contracts/schema.sql`, the models):
+**What's stored** (Alembic head / `contracts/schema.sql`, the models; updated 2026-10-03 after D2, D3 and the anonymisation work):
 
 | Data | Where stored | Collected in | Who can see it | Why it's needed |
 |---|---|---|---|---|
 | Email | `users.email` (mirror of Clerk) | Clerk sign-up | Self, admins | Account identity, email notifications |
 | Name | `users.name` | `OnboardingScreen`, `ProfileScreen` | **Everyone** (public profile) | Shown to ride partners |
-| **Date of birth** (required) | `users.date_of_birth` NOT NULL | `OnboardingScreen` | Self, admins | 18+ check (backend-enforced). **Stored permanently, though only needed once.** |
+| **Date of birth** (required) | `users.date_of_birth` NOT NULL | `OnboardingScreen` | Self, admins | 18+ check (backend-enforced). **Stored permanently, though only needed once.** Kept as is for now (Dvir's decision). It *could* later shrink to an "18+ verified" flag: nothing after onboarding reads the DOB (it's shown only to the user and admins), so a migration could replace it with `age_verified_at timestamptz` and drop the column. **No schema change made.** On deletion it becomes the `1900-01-01` sentinel. |
 | **Gender** (optional) | `users.gender` | `OnboardingScreen`, `ProfileScreen` | Self, admins. Used for `gender_only` ride filtering, not shown publicly. | Matching filter |
-| **Phone** (optional) | `users.phone` | `OnboardingScreen`, `ProfileScreen` | Self and **admins only** (`AdminUserDetailScreen`). **Never shown to ride partners or used by any feature.** | Nothing today (see D3) |
+| ~~Phone~~ | **Not collected** (D3, contract 0.5.0). Alembic `0002` dropped `users.phone`; a `phone` key in a request is ignored. | — | — | — |
 | Vehicle make, model, colour | `users.vehicle` jsonb | `OnboardingScreen`, `VehicleEditor` | Everyone | Ride identification |
 | **Licence plate** | `users.vehicle.plate` | same | Driver, approved passengers, admins | Pick-up identification |
 | Preferences (smoking, pets, language, notification toggles) | `users.preferences` | Onboarding, Profile | Self (ride prefs public on rides) | Matching |
@@ -563,19 +563,20 @@ Render has only one check path, used both to gate deploys and to monitor. Point 
 | Ratings, free-text comments, tags (about another person) | `ratings` | `RateScreen` | Ratee profile / viewers | Reputation |
 | Notification texts (contain full addresses and times) | `notifications` | Generated | Recipient | Feed |
 | Webhook ids | `clerk_webhook_events` (id, type, time; **no payload**) | Clerk | — | Idempotency |
+| Error events | Sentry (D2), not our DB | Automatic, backend and frontend | Dvir (Sentry dashboard) | Error alerts. Scrubbed before sending: no `Authorization`, cookies, query strings, request bodies, WS token, emails or `svix-*` headers; `send_default_pii=False`; no tracing or session replay. |
 
-**Third parties receiving personal data:**
+**Third parties receiving personal data (processors):**
 - Clerk: identity, credentials, IP/device.
 - Mapbox: address search text and the user's IP, from the browser.
 - SMTP provider: email, name, ride addresses and times in the message body.
-- Google Fonts: IP, until it's self-hosted.
-- The hosting provider: everything.
-- Sentry, if chosen: error context.
+- ~~Google Fonts~~: no longer. Archivo is self-hosted (`@fontsource-variable/archivo`), so no IP goes to Google.
+- The hosting provider (Render, D1): everything, including logs and backups.
+- **Sentry (D2):** scrubbed error context (stack traces, the route, the release, a user id at most); the user's IP as seen by Sentry's ingest endpoint for frontend errors.
 
-**Gaps:**
-- **There is no account deletion.** Clerk `user.deleted` only sets `is_active=false` (`webhooks/service.py:_deactivate`), and all PII is kept forever.
-- No privacy contact.
-- No document version tied to the consent.
+**Gaps (status 2026-10-03):**
+- ~~No account deletion~~: **fixed.** Clerk `user.deleted` (and `python -m app.admin_cli anonymise <email>`) anonymises the profile as listed in item 3 below. Notification texts in the deleted user's own feed and ride notes / rating comments they wrote are kept as written (CONTRACT.md §4).
+- Privacy contact: **placeholder** shown on `/terms`, `/privacy` and the Profile footer; the address goes in `frontend/src/features/legal/legalContent.ts`.
+- No document version tied to the consent (can wait).
 
 **What must exist before launch (engineering and product, not legal text):**
 1. **Terms of Service** and **Privacy Policy** documents, provided by you. Each has an effective date.
