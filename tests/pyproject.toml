@@ -32,6 +32,7 @@ asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 addopts = "-ra --strict-markers"
 markers = [
+    "fuzz: Schemathesis run against openapi.yaml; slow, run on demand",
     "contract: asserts a specific rule from contracts/CONTRACT.md",
 ]
 filterwarnings = ["error::DeprecationWarning:support.*"]
@@ -46,3 +47,8 @@ ignore = ["B008"]
 
 [tool.ruff.lint.per-file-ignores]
 "api/*" = ["E501"]
+
+[dependency-groups]
+dev = [
+    "schemathesis>=4",
+]
