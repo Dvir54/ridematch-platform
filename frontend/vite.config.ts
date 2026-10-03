@@ -1,13 +1,32 @@
 /// <reference types="vitest/config" />
-import { defineConfig } from 'vite'
+import { rmSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+
+/** MSW's worker lives in public/ for dev and mock mode; a production build ships without it. */
+function dropMockWorker(): Plugin {
+  let outDir = 'dist'
+  let production = false
+  return {
+    name: 'ridematch:drop-mock-worker',
+    apply: 'build',
+    configResolved(config) {
+      outDir = resolve(config.root, config.build.outDir)
+      production = config.mode === 'production'
+    },
+    closeBundle() {
+      if (production) rmSync(resolve(outDir, 'mockServiceWorker.js'), { force: true })
+    },
+  }
+}
 
 // envDir: '..' — the repo root holds the single shared .env for every session.
 // Only VITE_* variables reach the browser.
 export default defineConfig({
   envDir: '..',
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), dropMockWorker()],
   server: { port: 5173, strictPort: true },
   test: {
     environment: 'jsdom',

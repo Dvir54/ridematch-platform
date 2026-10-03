@@ -11,6 +11,9 @@ import { ConfigurationNeeded } from '../components/states'
 export function AuthProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
 
+  if (env.missing.length > 0) {
+    return <ConfigurationNeeded variable={env.missing.join(' and ')} />
+  }
   if (!env.clerkPublishableKey.startsWith('pk_')) {
     return <ConfigurationNeeded variable="VITE_CLERK_PUBLISHABLE_KEY" />
   }

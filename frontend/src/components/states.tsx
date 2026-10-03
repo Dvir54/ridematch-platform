@@ -67,7 +67,7 @@ export function ConfigurationNeeded({ variable }: { variable: string }) {
   return (
     <MessageScreen
       title="RideMatch is not configured yet"
-      body={`Set ${variable} in the .env file at the repo root, then restart the dev server.`}
+      body={`Set ${variable} in the .env file at the repo root (or the host's build settings), then restart the dev server or rebuild.`}
     />
   )
 }
