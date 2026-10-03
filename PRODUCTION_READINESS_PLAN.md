@@ -1,6 +1,6 @@
 # RideMatch: Production Readiness Plan (rev. 2)
 
-## 0. Approved: start here (status as of 2026-10-03)
+## 0. Approved: start here (status as of 2026-10-03: implemented, not deployed)
 
 Dvir approved this plan. A new session implements it from this section plus §15–§19. The rest of the file is the reasoning behind it.
 
@@ -38,6 +38,17 @@ Dvir approved this plan. A new session implements it from this section plus §15
 
 - `8889f3c`: this plan.
 - `3d9709f` **contract 0.5.0 (D22)**: `openapi.yaml`, `CONTRACT.md` (§2, §4, §5, §6, D22) and `schema.sql` are updated, and `frontend/src/api/schema.d.ts` is regenerated. **The contract is the spec for steps 2–9.** The code doesn't implement it yet, so **`main` is red** (frontend typecheck, tests) until the work below lands. Don't push before then.
+- **Steps 2–9 done, `main` green** (2026-10-03):
+  - D3 phone removal, Alembic `0002`: `66dfec1`.
+  - Step 2 production config validator, `admin_cli grant/revoke`, `/docs` off, seed guard, DB pool: `038e37b`.
+  - Step 3 `/health`, `/ready`, email after commit with a 10 s timeout, jobs advisory lock, 64 KiB body limit: `502a867`.
+  - Step 4 WebSocket first-message auth and Origin check: `8b20345`.
+  - Step 5 test DB built by Alembic, migration tests: `7dca6b6`, `9fd6607`.
+  - Step 6 anonymisation, `/terms` and `/privacy` placeholders, self-hosted font, §12: `6a792b5`, `c51e4fc`, `6b1515d`.
+  - Step 7 frontend env guard, no mocks in `dist`, Sentry errors-only (D2): `0ffcdf7`, `80dbb02`.
+  - Step 8 Dockerfile, `scripts/check-all.sh`, `scripts/check-prod-image.sh`, CI jobs: `febe312`.
+  - Step 9 `render.yaml`, `.env.example` production section, Render runbook: `f3dd3b4`, `04478b0`.
+- **D1 amended by Dvir (2026-10-03): free tier.** A resume project, so Render's free web service and Key Value, Postgres on **Neon**'s free tier (Render's free Postgres expires after 30 days). The API sleeps when idle; migrations run in the start command (no pre-deploy on free); `admin_cli` runs locally against Neon. Dvir buys a domain for the Clerk production instance; `ridematch.example` in `render.yaml` is its placeholder.
 
 Details §19 and D22 leave open, decided now:
 
@@ -61,20 +72,20 @@ After each phase:
 5. check nothing regressed;
 6. commit.
 
-**Before finishing:**
-- [ ] full pytest suite (in the background)
-- [ ] frontend production build
-- [ ] `alembic check`
-- [ ] `alembic upgrade head` on a clean database
-- [ ] production config validation
-- [ ] WebSocket auth flow
-- [ ] `/health` and `/ready`
-- [ ] admin CLI
-- [ ] email after commit and the timeout
-- [ ] Sentry receives no sensitive data
-- [ ] `pip-audit` and `npm audit`
-- [ ] a final readiness pass
-- [ ] update this file's status
+**Before finishing:** (all done 2026-10-03: 932 passed, 0 skipped; pip-audit and npm audit clean)
+- [x] full pytest suite (in the background)
+- [x] frontend production build
+- [x] `alembic check`
+- [x] `alembic upgrade head` on a clean database
+- [x] production config validation
+- [x] WebSocket auth flow
+- [x] `/health` and `/ready`
+- [x] admin CLI
+- [x] email after commit and the timeout
+- [x] Sentry receives no sensitive data
+- [x] `pip-audit` and `npm audit`
+- [x] a final readiness pass
+- [x] update this file's status
 
 **Then report:**
 1. what changed;
