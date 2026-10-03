@@ -54,6 +54,26 @@ async def test_deactivated_user_is_refused(users, db) -> None:
     assert (await db.user_row(user.id))["is_admin"] is False
 
 
+async def test_anonymise_removes_the_personal_data(users, db) -> None:
+    user = await users.create()
+    assert await run("anonymise", user.email) == 0
+    row = await db.user_row(user.id)
+    assert row["name"] == "Deleted user"
+    assert row["email"] == f"deleted-{user.id}@deleted.invalid"
+    assert row["is_active"] is False
+
+
+async def test_anonymise_also_takes_a_deactivated_user(users, db) -> None:
+    user = await users.create()
+    await users.deactivate(user)
+    assert await run("anonymise", user.email) == 0
+    assert (await db.user_row(user.id))["clerk_user_id"] == f"deleted_{user.id}"
+
+
+async def test_anonymise_an_unknown_email_exits_1(db) -> None:
+    assert await run("anonymise", "nobody@ridematch.test") == 1
+
+
 async def test_production_onboarding_never_bootstraps_an_admin(
     backend_app, users, monkeypatch
 ) -> None:

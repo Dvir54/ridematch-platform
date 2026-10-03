@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.errors import BadRequest
+from app.modules.users import service as users_service
 from app.modules.users.models import ClerkWebhookEvent, User
 from app.ws import WsRegistry
 
@@ -76,16 +77,17 @@ async def _sync_email(db: AsyncSession, data: dict[str, Any]) -> None:
         user.email = email.strip().lower()
 
 
-async def _deactivate(db: AsyncSession, data: dict[str, Any], registry: WsRegistry) -> None:
+async def _delete(db: AsyncSession, data: dict[str, Any], registry: WsRegistry) -> None:
+    """`user.deleted`: deactivate, close the sockets, anonymise (CONTRACT.md §4 Users)."""
     clerk_user_id = data.get("id")
     if not clerk_user_id:
         return
     user = (
         await db.execute(select(User).where(User.clerk_user_id == clerk_user_id))
     ).scalar_one_or_none()
-    if user is None or not user.is_active:
+    if user is None:
         return
-    user.is_active = False
+    users_service.anonymise(user)
     await registry.close_user(user.id)
 
 
@@ -109,7 +111,7 @@ async def handle_event(
     if event_type == "user.updated":
         await _sync_email(db, data)
     elif event_type == "user.deleted":
-        await _deactivate(db, data, registry)
+        await _delete(db, data, registry)
     else:
         logger.info("Ignoring unhandled Clerk webhook event type %s", event_type)
 

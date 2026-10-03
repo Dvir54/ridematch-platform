@@ -10,7 +10,7 @@ from __future__ import annotations
 from starlette.testclient import WebSocketDisconnect
 
 from support import env
-from support.assertions import expect_error, expect_no_content
+from support.assertions import expect_error, expect_no_content, expect_status
 from support.factories import onboarding_payload
 from support.keys import auth_header
 from support.webhooks import event_body, sign, unique_svix_id, user_deleted_data, user_updated_data
@@ -85,13 +85,16 @@ class TestUserUpdated:
 
 
 class TestUserDeleted:
-    async def test_deactivates_the_user(self, client, admin, user) -> None:
+    async def test_deactivates_the_user(self, client, admin, user, db) -> None:
         body = event_body("user.deleted", user_deleted_data(user.clerk_user_id))
         headers = sign(svix_id=unique_svix_id(), body=body)
         expect_no_content(await client.post(WEBHOOK, content=body, headers=headers))
 
+        assert (await db.user_row(user.id))["is_active"] is False
+        # The Clerk id is anonymised too (CONTRACT.md §4), so a still-valid token from the
+        # deleted Clerk account no longer maps to the row at all.
         expect_error(
-            await client.get("/users/me", headers=user.headers), 403, "ACCOUNT_DEACTIVATED"
+            await client.get("/users/me", headers=user.headers), 403, "ONBOARDING_REQUIRED"
         )
 
     async def test_closes_open_sockets(self, ws_client, users) -> None:
@@ -111,6 +114,59 @@ class TestUserDeleted:
                 raise AssertionError("expected the socket to close")
             except WebSocketDisconnect as exc:
                 assert exc.code == 4403
+
+
+class TestUserDeletedAnonymises:
+    """CONTRACT.md §4 Users: `user.deleted` removes the personal data, keeps the history."""
+
+    async def _delete(self, client, clerk_user_id: str) -> None:
+        body = event_body("user.deleted", user_deleted_data(clerk_user_id))
+        headers = sign(svix_id=unique_svix_id(), body=body)
+        expect_no_content(await client.post(WEBHOOK, content=body, headers=headers))
+
+    async def test_the_row_keeps_none_of_the_personal_data(self, client, users, db) -> None:
+        user = await users.create_driver(gender="female")
+        before = await db.user_row(user.id)
+
+        await self._delete(client, user.clerk_user_id)
+
+        row = await db.user_row(user.id)
+        assert row["name"] == "Deleted user"
+        assert row["email"] == f"deleted-{user.id}@deleted.invalid"
+        assert row["clerk_user_id"] == f"deleted_{user.id}"
+        assert row["gender"] is None
+        assert row["vehicle"] is None
+        assert row["preferences"] is None
+        assert str(row["date_of_birth"]) == "1900-01-01"
+        assert row["is_active"] is False
+        for column in ("name", "email", "clerk_user_id", "date_of_birth"):
+            assert row[column] != before[column], column
+
+    async def test_the_public_profile_shows_deleted_user(self, client, users) -> None:
+        subject = await users.create()
+        viewer = await users.create()
+        await self._delete(client, subject.clerk_user_id)
+
+        body = expect_status(await client.get(f"/users/{subject.id}", headers=viewer.headers), 200)
+        assert body["name"] == "Deleted user"
+
+    async def test_rides_stay_for_the_other_party(self, client, users, rides, db) -> None:
+        offer = await rides.offer()
+        await self._delete(client, offer.driver.clerk_user_id)
+        assert await db.count("rides") == 1
+
+    async def test_a_second_delivery_is_a_no_op(self, client, users, db) -> None:
+        user = await users.create()
+        await self._delete(client, user.clerk_user_id)
+        first = await db.user_row(user.id)
+        await self._delete(client, user.clerk_user_id)  # new svix id, same Clerk user
+        assert await db.user_row(user.id) == first
+
+    async def test_an_admin_deactivated_user_is_still_anonymised(self, client, users, db) -> None:
+        user = await users.create()
+        await users.deactivate(user)
+        await self._delete(client, user.clerk_user_id)
+        assert (await db.user_row(user.id))["name"] == "Deleted user"
 
 
 class TestIdempotency:

@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import exists, func, null, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,6 +58,29 @@ def merge_preferences(stored: dict[str, Any] | None, patch: UserPreferencesPatch
         if value is not None or key in NULLABLE_PREFERENCE_KEYS:
             merged[key] = value
     return merged
+
+
+#: `date_of_birth` is NOT NULL; the 18+ check already happened at onboarding (CONTRACT.md §4).
+ANONYMISED_DATE_OF_BIRTH = date(1900, 1, 1)
+ANONYMISED_CLERK_PREFIX = "deleted_"
+
+
+def is_anonymised(user: User) -> bool:
+    return user.clerk_user_id.startswith(ANONYMISED_CLERK_PREFIX)
+
+
+def anonymise(user: User) -> None:
+    """Remove the personal data of a deleted account (CONTRACT.md §4 Users). Rides, requests and
+    ratings stay, so the other party's history is intact. Committing is the caller's business."""
+    user.name = "Deleted user"
+    user.email = f"deleted-{user.id}@deleted.invalid"
+    user.clerk_user_id = f"{ANONYMISED_CLERK_PREFIX}{user.id}"
+    user.gender = None
+    # SQL NULL, not the JSON value `null` a plain None would store in a JSONB column.
+    user.vehicle = null()
+    user.preferences = null()
+    user.date_of_birth = ANONYMISED_DATE_OF_BIRTH
+    user.is_active = False
 
 
 async def get_user_by_id(db: AsyncSession, user_id: int) -> User | None:
