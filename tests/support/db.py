@@ -1,10 +1,9 @@
 """Direct access to the test database, independent of the backend's own session.
 
-The schema is loaded from `contracts/schema.sql`, which that file explicitly
-invites ("tests may load this file directly into a throwaway DB"). Loading the
-contract rather than running the backend's Alembic migration is deliberate: it
-is the contract that tests are supposed to prove, so a migration that drifts
-from `schema.sql` shows up as failing tests instead of passing ones.
+The schema is built by the backend's Alembic migrations (`alembic upgrade head`),
+exactly as production gets it: Alembic is the database's source of truth.
+`contracts/schema.sql` is the reference it is verified against
+(tests/migrations/test_alembic.py).
 
 Calls share one lazily created pool. The suite runs on a single session-scoped
 event loop (pyproject.toml), so the pool is never used from another loop. Opening
@@ -14,11 +13,13 @@ Windows during setup.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import asyncpg
 
 from . import env
+from .migrations import run_alembic
 
 # Tables the suite must not truncate between tests.
 PRESERVED_TABLES = frozenset({"alembic_version"})
@@ -27,8 +28,10 @@ PRESERVED_TABLES = frozenset({"alembic_version"})
 class TestDatabase:
     __test__ = False  # not a pytest test class
 
-    def __init__(self, dsn: str | None = None) -> None:
-        self.dsn = dsn or env.asyncpg_dsn()
+    def __init__(self, url: str | None = None) -> None:
+        #: The SQLAlchemy URL (what Alembic takes); `dsn` is the asyncpg form.
+        self.url = url or env.database_url()
+        self.dsn = env.asyncpg_dsn(self.url)
         self._pool: asyncpg.Pool | None = None
 
     async def _get_pool(self) -> asyncpg.Pool:
@@ -60,12 +63,11 @@ class TestDatabase:
 
     # ── lifecycle ───────────────────────────────────────────────────────
     async def reset_schema(self) -> None:
-        """Drop everything and rebuild from contracts/schema.sql."""
-        schema_sql = env.SCHEMA_SQL_PATH.read_text(encoding="utf-8")
+        """Drop everything and rebuild with `alembic upgrade head`."""
         pool = await self._get_pool()
         async with pool.acquire() as conn:
             await conn.execute("DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;")
-            await conn.execute(schema_sql)
+        await asyncio.to_thread(run_alembic, self.url, "upgrade", "head")
 
     async def table_names(self) -> list[str]:
         rows = await self.fetch(

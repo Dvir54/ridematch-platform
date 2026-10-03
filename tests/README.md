@@ -1,7 +1,7 @@
 # RideMatch test suite
 
 Contract tests for the backend. They are written from `contracts/` — `openapi.yaml`
-for shapes, `CONTRACT.md` for behaviour, `schema.sql` for the database — and never
+for shapes, `CONTRACT.md` for behaviour, `schema.sql` as the database reference — and never
 from the backend source, so that a backend that misreads the contract fails here.
 
 ## Running
@@ -26,12 +26,14 @@ uv run ruff check . && uv run ruff format --check . && uv run pytest -q
 | `conftest.py` | Pins the backend's environment **before** it is imported, then the fixtures |
 | `support/env.py` | The test environment: `APP_ENV=test`, test DB, `JOBS_ENABLED=false`, `EMAIL_BACKEND=memory`, Clerk test values |
 | `support/keys.py` | RSA key pair, Clerk-style token signer, and deliberately forged tokens |
-| `support/db.py` | The test database, built from `contracts/schema.sql`, truncated per test |
+| `support/db.py` | The test database, built by `alembic upgrade head`, truncated per test |
+| `support/migrations.py` | Runs the backend's Alembic in a subprocess |
 | `support/contract.py` | Validates a response against `openapi.yaml` |
 | `support/assertions.py` | `expect_status` / `expect_error` — every API assertion goes through these |
 | `support/factories.py` | Users, created through the API the way the contract says they are |
 | `support/rides.py` | Rides and requests, likewise - plus the seat invariant and the notification-row readers |
 | `unit/` | The harness itself, plus `schema.sql`. No backend needed |
+| `migrations/` | Alembic: one head, upgrade/downgrade round trip, `alembic check`, parity with `schema.sql`, no superuser needed |
 | `api/` | One file per area |
 | `e2e/` | Playwright against the full stack (`cd e2e && npm install && npx playwright install chromium && npm test`; needs Clerk keys in the root `.env`, Docker up, and the test DB built by any pytest run) |
 
@@ -97,9 +99,10 @@ a fix can never land unnoticed. `uv run pytest -q -rx` lists them.
 
 ## Database
 
-The schema comes from `contracts/schema.sql`, which that file invites tests to load
-directly. Running the contract rather than the backend's Alembic migration is the
-point: a migration that drifts from the contract shows up as failing tests.
+The schema is built by `alembic upgrade head` (in a subprocess, once per session),
+exactly as production gets it. `migrations/test_alembic.py` proves the migrated
+schema is identical to `contracts/schema.sql`, so a migration that drifts from the
+reference fails there.
 
 Every table is truncated before each test. `support/env.py` refuses to start if
 `TEST_DATABASE_URL` does not name a database with "test" in it.

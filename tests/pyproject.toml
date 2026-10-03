@@ -25,7 +25,7 @@ dependencies = [
 ridematch-backend = { path = "../backend", editable = true }
 
 [tool.pytest.ini_options]
-testpaths = ["unit", "api"]
+testpaths = ["unit", "migrations", "api"]
 pythonpath = ["."]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
