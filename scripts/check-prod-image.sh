@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Production-like check of the backend image, locally (PRODUCTION_READINESS_PLAN.md §0, §11.1).
+# Production-like check of the backend image, locally.
 #
 # Builds backend/Dockerfile, then against the compose Postgres and Redis (`docker compose up -d`):
 #   1. an incomplete APP_ENV=production config must refuse to start

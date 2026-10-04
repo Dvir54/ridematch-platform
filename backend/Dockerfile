@@ -1,4 +1,4 @@
-# RideMatch API: one uvicorn process, one worker (PRODUCTION_READINESS_PLAN.md §4).
+# RideMatch API: one uvicorn process, one worker.
 # Build from backend/:  docker build -t ridematch-backend backend
 # Release step (before traffic):  alembic upgrade head
 

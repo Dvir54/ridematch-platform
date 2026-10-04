@@ -1,6 +1,6 @@
 """Assertions every API test goes through.
 
-docs/roles/tests.md: "Every API test checks the status code, the error `code`
+The suite rule: "Every API test checks the status code, the error `code`
 (for errors) and that the body validates against the spec schema." These
 helpers make that one call, so no test can quietly skip the schema check.
 """

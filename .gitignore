@@ -24,3 +24,11 @@ test-results/
 # misc
 .DS_Store
 *.log
+
+# local development notes and agent config (kept out of the public repo)
+CLAUDE.md
+PLAN.md
+PRODUCTION_READINESS_PLAN.md
+docs/roles/
+docs/SYSTEM_DESIGN.md
+.claude/

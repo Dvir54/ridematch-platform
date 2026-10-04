@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The local gate before every push (GitHub Actions is blocked; PRODUCTION_READINESS_PLAN.md §11.2).
+# The local gate before every push.
 #
 #   bash scripts/check-all.sh          backend + frontend checks, migration tests, a pytest subset
 #   bash scripts/check-all.sh --full   ...and the whole pytest suite (~8 min) instead of the subset

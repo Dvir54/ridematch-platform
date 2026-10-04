@@ -1,6 +1,6 @@
 """Locate the backend's ASGI app.
 
-PLAN.md Phase 1 says `backend/` is an installable uv package named
+The project plan says `backend/` is an installable uv package named
 `ridematch-backend` "exposing `app`", without naming the import path, so this
 tries the plausible spellings and lets `RIDEMATCH_APP=module:attr` override.
 Once @backend confirms the real path it can be collapsed to one candidate.

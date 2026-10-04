@@ -163,5 +163,5 @@ app/
     users/ rides/ requests/ feedback/ notifications/
 ```
 
-Module calls only go inward (SYSTEM_DESIGN §4.2):
+Module calls only go inward:
 admin/search → requests → feedback → rides → users → notifications.

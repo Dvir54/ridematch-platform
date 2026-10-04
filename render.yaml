@@ -1,4 +1,4 @@
-# RideMatch on Render (PRODUCTION_READINESS_PLAN.md §0 D1, §14). Deploy steps: backend/README.md "Deploy on Render".
+# RideMatch on Render. Deploy steps: backend/README.md "Deploy on Render".
 # Free tier: Render free web service + Key Value + Static Site; Postgres on Neon's free tier
 # (Render's free Postgres is deleted after 30 days).
 #

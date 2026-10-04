@@ -60,9 +60,7 @@ jobs:
       - name: Create the test database
         run: psql -d ridematch -c 'CREATE DATABASE ridematch_test'
 
-      # The backend is built on feat/backend and reaches main first (PLAN.md
-      # merge order). Until it exists, its steps are skipped rather than failing
-      # the whole workflow on branches that do not carry it yet.
+      # Skip the backend steps (rather than fail) on a branch that has no backend/ yet.
       - name: Detect the backend package
         id: backend
         run: |

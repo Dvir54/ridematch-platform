@@ -1,6 +1,6 @@
 """Admin logic: user/ride management and analytics (CONTRACT.md §2 Admin, §4, /admin/* in
 openapi.yaml). Reads `requests`/`feedback`/`rides` models directly and calls into `rides.service`
-for force-cancel, matching the one-way module dependency in `docs/roles/backend.md` §4.2.
+for force-cancel, matching the one-way module dependency (see backend/README.md).
 """
 
 from datetime import datetime

@@ -41,7 +41,7 @@ uv run ruff check . && uv run ruff format --check . && uv run pytest -q
 
 `expect_status` and `expect_error` check the status code, validate the body against
 the matching `openapi.yaml` schema, and — for errors — check the stable `code`.
-Using them is what makes docs/roles/tests.md's "every API test checks all three"
+Using them is what makes "every API test checks all three"
 true by construction.
 
 Two deliberate strictnesses:
@@ -92,7 +92,7 @@ to within a minute without ever flaking.
 
 ## Failures the backend has not fixed yet
 
-docs/roles/tests.md: a test that shows a real backend bug is committed as a
+A test that shows a real backend bug is committed as a
 **strict** `xfail` naming the FAIL report, and the marker comes off when @backend
 replies `FIXED`. Strict means the fix turns the test red until the marker goes, so
 a fix can never land unnoticed. `uv run pytest -q -rx` lists them.

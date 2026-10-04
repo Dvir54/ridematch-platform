@@ -61,7 +61,7 @@ async def create_rating(
 
 
 #: `/users/me/stats` counts rides and requests, so it can only live in a module that may import
-#: them — which the users module, being further in (SYSTEM_DESIGN §4.2), is not. It keeps the
+#: them — which the users module, being further in (backend/README.md), is not. It keeps the
 #: `users` tag of `openapi.yaml` regardless.
 @router.get(
     "/users/me/stats",

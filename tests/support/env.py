@@ -56,7 +56,7 @@ def _guard_test_database(url: str) -> None:
     """Refuse to run against anything that is not obviously a test database.
 
     The suite truncates every table between tests; pointing it at the dev
-    database would wipe Dvir's data.
+    database would wipe its data.
     """
     name = url.rsplit("/", 1)[-1].split("?", 1)[0]
     if "test" not in name.lower():
