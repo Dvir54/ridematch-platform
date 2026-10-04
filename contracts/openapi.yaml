@@ -7,7 +7,7 @@ info:
     See CONTRACT.md for conventions, state machines, business rules, error codes and the WebSocket protocol.
     Authentication is handled by Clerk (sign-up, sign-in, password, email verification, social login).
     The backend never sees passwords; it verifies the Clerk session token on every request.
-    Owned by @backend. Any change: bump `info.version`, commit, then message @frontend and @tests.
+    Any change: bump `info.version` and commit it on its own (see CONTRACT.md §1).
 servers:
   - url: http://localhost:8000/api/v1
     description: Local dev

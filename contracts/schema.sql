@@ -2,7 +2,7 @@
 -- A REFERENCE, not a source: every real database (production, dev and the test DB) is built by
 -- the Alembic migration chain in backend/alembic/versions. tests/migrations keeps this file
 -- identical to what `alembic upgrade head` produces, so it is safe to read as documentation.
--- Owned by @backend. Any change: update here, commit, message @frontend and @tests.
+-- A schema change updates both this file and a new migration.
 
 BEGIN;
 
